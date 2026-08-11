@@ -1,0 +1,92 @@
+@inject IJSRuntime JS
+@inject LocalizationService L
+@implements IDisposable
+
+<div class="lang-tools">
+    <div class="lang-dd" id="lang-dd">
+        <button type="button" class="lang-dd-trigger" @onclick="ToggleOpen"
+                aria-haspopup="listbox" aria-expanded="@_open" aria-label="@L["common.language"]">
+            <span class="lang-badge">@Badge(L.Lang)</span>
+            <span class="lang-name">@LangName(L.Lang)</span>
+            <span class="lang-caret">▾</span>
+        </button>
+        @if (_open)
+        {
+            <div class="lang-dd-menu" role="listbox">
+                @foreach (var (code, name, _) in LocalizationService.Languages)
+                {
+                    <button type="button" class="lang-dd-item @(L.Lang == code ? "active" : null)" role="option"
+                            aria-selected="@(L.Lang == code)" @onclick="() => Select(code)">
+                        <span class="lang-badge">@Badge(code)</span>
+                        <span class="lang-name">@name</span>
+                        @if (L.Lang == code)
+                        {
+                            <span class="lang-check">✓</span>
+                        }
+                    </button>
+                }
+            </div>
+        }
+    </div>
+    <button class="nb-btn small theme-toggle" title="@L["common.theme"]" aria-label="@L["common.theme"]" @onclick="ToggleTheme">@(_theme == "dark" ? "☀️" : "🌙")</button>
+</div>
+
+@code {
+    private bool _open;
+    private string _theme = "light";
+    private DotNetObjectReference<LanguageSwitcher>? _self;
+
+    protected override void OnInitialized()
+    {
+        // Catatan: jangan panggil JS interop di sini — saat prerender, interop
+        // dilarang dan bisa mematikan circuit (dropdown jadi tidak bisa diklik).
+        _self = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            await JS.InvokeVoidAsync("hajjvrUtil.addClickOutside", _self, "lang-dd");
+            _theme = await JS.InvokeAsync<string>("hajjvrTheme.get");
+            var saved = await JS.InvokeAsync<string>("hajjvrUtil.getLang");
+            if (!string.IsNullOrEmpty(saved)) L.Lang = saved;
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private void ToggleOpen() => _open = !_open;
+
+    [JSInvokable]
+    public void CloseMenu()
+    {
+        if (_open) { _open = false; StateHasChanged(); }
+    }
+
+    private async Task Select(string code)
+    {
+        _open = false;
+        L.Lang = code;
+        try { await JS.InvokeVoidAsync("hajjvrUtil.setLang", code); } catch { }
+    }
+
+    private async Task ToggleTheme() => _theme = await JS.InvokeAsync<string>("hajjvrTheme.toggle");
+
+    private static string Badge(string code) => code.ToUpperInvariant() switch
+    {
+        "AR" => "SA",
+        "EN" => "GB",
+        _ => code.ToUpperInvariant()
+    };
+
+    private static string LangName(string code)
+        => LocalizationService.Languages.FirstOrDefault(l => l.Code == code).Name ?? code;
+
+    public void Dispose()
+    {
+        _self?.Dispose();
+        try { _ = JS.InvokeVoidAsync("hajjvrUtil.removeClickOutside", "lang-dd"); } catch { }
+    }
+}

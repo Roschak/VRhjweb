@@ -1,0 +1,91 @@
+@page "/reports"
+@attribute [Authorize(Roles = "Admin,Operator,Pembimbing")]
+@inject AnalyticsService Analytics
+@inject IJSRuntime JS
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["rep.pageTitle"]</PageTitle>
+
+<div class="flex space-between flex-wrap">
+    <h1>@L["rep.title"]</h1>
+    <div class="flex">
+        <button class="nb-btn danger small" @onclick='() => Download("pdf")'>📄 @L["common.export.pdf"]</button>
+        <button class="nb-btn primary small" @onclick='() => Download("xlsx")'>📊 @L["common.export.excel"]</button>
+    </div>
+</div>
+
+<div class="flex mt-1r flex-wrap">
+    <input class="nb-input" style="max-width:280px" placeholder="@L["rep.searchPh"]" @bind="_filter" @bind:event="oninput" />
+    <select class="nb-select" style="width:auto" @bind="_groupFilter">
+        <option value="">@L["rep.allGroups"]</option>
+        @foreach (var g in _groups)
+        {
+            <option value="@g">@g</option>
+        }
+    </select>
+</div>
+
+<div class="table-wrap mt-1r">
+    <table class="nb-table">
+        <thead>
+            <tr>
+                <th>@L["rep.name"]</th>
+                <th>@L["rep.group"]</th>
+                <th>@L["rep.package"]</th>
+                <th style="min-width:220px">@L["rep.progress"]</th>
+                <th>%</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Filtered)
+            {
+                var pct = (int)(100.0 * row.Completed / row.Total);
+                <tr>
+                    <td>@row.User.DisplayName</td>
+                    <td>@(row.Profile?.GroupName ?? "-")</td>
+                    <td><span class="nb-chip @(row.Profile?.PackageType == "Haji" ? "gold" : "green")">@(row.Profile?.PackageType ?? "-")</span></td>
+                    <td>
+                        <div class="nb-progress" style="height:16px"><div style="width:@pct%"></div></div>
+                    </td>
+                    <td class="mono">@pct%</td>
+                    <td>
+                        <button class="nb-btn small" title="@L["rep.downloadPdf"]"
+                                @onclick="() => DownloadJamaah(row.User.Id)">📄</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private List<(AppUser User, JamaahProfile? Profile, int Completed, int Total)> _rows = [];
+    private List<string> _groups = [];
+    private string _filter = "", _groupFilter = "";
+
+    private IEnumerable<(AppUser User, JamaahProfile? Profile, int Completed, int Total)> Filtered =>
+        _rows.Where(r =>
+            (string.IsNullOrEmpty(_filter) || r.User.DisplayName.Contains(_filter, StringComparison.OrdinalIgnoreCase)) &&
+            (string.IsNullOrEmpty(_groupFilter) || r.Profile?.GroupName == _groupFilter));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _rows = await Analytics.GetJamaahProgressAsync();
+        _groups = _rows.Select(r => r.Profile?.GroupName).Where(g => g is not null).Distinct().Order().Cast<string>().ToList();
+    }
+
+    private async Task Download(string format)
+        => await JS.InvokeVoidAsync("hajjvrUtil.downloadUrl", $"/api/reports/progress.{format}");
+
+    private async Task DownloadJamaah(int id)
+        => await JS.InvokeVoidAsync("hajjvrUtil.downloadUrl", $"/api/reports/jamaah/{id}.pdf");
+}

@@ -1,0 +1,17 @@
+@page "/not-found"
+@implements IDisposable
+@layout MainLayout
+@inject LocalizationService L
+
+<h3>@L["nf.title"]</h3>
+<p>@L["nf.desc"]</p>
+<a class="nb-btn primary mt-1r" href="/">@L["nf.home"]</a>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+}

@@ -1,0 +1,78 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject LocalizationService L
+@inject NavigationManagerAccessor NavAccessor
+@inject NavigationManager Nav
+@inject AuthService Auth
+@inject AuthenticationStateProvider AuthState
+
+<div class="app-shell">
+    <NavMenu Open="_sidebarOpen" OnClose="() => _sidebarOpen = false" />
+
+    <div class="main-area">
+        <header class="topbar">
+            <div class="flex">
+                <button class="nb-btn small hamburger" aria-label="@L["common.openMenu"]" @onclick="() => _sidebarOpen = !_sidebarOpen">☰</button>
+                <span class="topbar-brand">
+                    <span class="crescent">☪</span>
+                    <span>HajjVR</span>
+                </span>
+                <span class="muted topbar-title d-none d-md-inline">— @L["app.title"]</span>
+            </div>
+            <div class="flex">
+                <LanguageSwitcher />
+                <AuthorizeView>
+                    <Authorized>
+                        <a class="nb-chip green" href="/profile" title="@L["common.profile"]">
+                            👤 @(context.User.FindFirst("display")?.Value ?? context.User.Identity?.Name)
+                        </a>
+                        <form method="post" action="/auth/logout" style="display:inline">
+                            <button type="submit" class="nb-btn small danger" title="@L["nav.logout"]">⎋</button>
+                        </form>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a class="nb-btn small primary" href="/login">@L["nav.login"]</a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </header>
+
+        <main class="page-content">
+            @Body
+        </main>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    @L["errUi.title"]
+    <a href="." class="reload">@L["errUi.reload"]</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private bool _sidebarOpen;
+
+    protected override void OnInitialized()
+    {
+        L.OnChanged += HandleLangChanged;
+        NavAccessor.BaseUri = Nav.BaseUri;
+    }
+
+    private async void HandleLangChanged()
+    {
+        StateHasChanged();
+        // Simpan preferensi bahasa ke profil user (jika sudah login)
+        try
+        {
+            var user = await Auth.GetCurrentUserAsync(AuthState);
+            if (user is not null && user.Language != L.Lang)
+            {
+                user.Language = L.Lang;
+                await Auth.UpdateProfileAsync(user);
+            }
+        }
+        catch { }
+    }
+
+    public void Dispose() => L.OnChanged -= HandleLangChanged;
+}

@@ -1,0 +1,165 @@
+@page "/admin/settings"
+@attribute [Authorize(Roles = "Admin,Operator")]
+@inject SettingsService Cfg
+@inject SemanticSearchService Search
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["sett.pageTitle"]</PageTitle>
+
+<h1>@L["sett.title"]</h1>
+<p class="muted">@L["sett.subtitle"]</p>
+
+<div class="grid-2 mt-1r">
+    <!-- ===== LLM ===== -->
+    <div class="nb-card">
+        <h3>@L["sett.llm"]</h3>
+        <label class="nb-label">@L["sett.provider"]</label>
+        <select class="nb-select" @bind="_llmProvider">
+            <option>OpenAI</option>
+            <option>Anthropic</option>
+            <option>Gemini</option>
+            <option>Ollama</option>
+        </select>
+        <label class="nb-label" style="margin-top:.6rem">@L["sett.model"]</label>
+        <input class="nb-input mono" @bind="_llmModel" placeholder="@KernelFactory.DefaultModel(_llmProvider)" />
+        <label class="nb-label" style="margin-top:.6rem">@L["sett.apiKey"]</label>
+        <input class="nb-input mono" type="password" @bind="_llmApiKey" placeholder="sk-…" />
+        <label class="nb-label" style="margin-top:.6rem">@L["sett.endpoint"]</label>
+        <input class="nb-input mono" @bind="_llmEndpoint" placeholder="@KernelFactory.DefaultEndpoint(_llmProvider)" />
+        <div class="flex mt-1r">
+            <div style="flex:1">
+                <label class="nb-label">@L["sett.temperature"] (@_temperature.ToString("0.0"))</label>
+                <input type="range" min="0" max="2" step="0.1" style="width:100%" @bind="_temperature" />
+            </div>
+            <div style="flex:1">
+                <label class="nb-label">@L["sett.maxTokens"]</label>
+                <input class="nb-input mono" type="number" @bind="_maxTokens" />
+            </div>
+        </div>
+        <label class="nb-label" style="margin-top:.6rem">@L["sett.systemPrompt"]</label>
+        <textarea class="nb-textarea mono" rows="5" style="font-size:.8rem" @bind="_systemPrompt"
+                  placeholder="@L["sett.sysPromptPh"]"></textarea>
+    </div>
+
+    <div>
+        <!-- ===== Storage ===== -->
+        <div class="nb-card">
+            <h3>@L["sett.storage"]</h3>
+            <label class="nb-label">@L["sett.provider"]</label>
+            <select class="nb-select" @bind="_storageProvider">
+                <option value="FileSystem">@L["sett.storageFs"]</option>
+                <option value="AzureBlob">Azure Blob</option>
+                <option value="S3">Amazon S3</option>
+                <option value="MinIO">MinIO</option>
+            </select>
+            @if (_storageProvider == "AzureBlob")
+            {
+                <label class="nb-label" style="margin-top:.6rem">@L["sett.azureCs"]</label>
+                <input class="nb-input mono" type="password" @bind="_azureCs" />
+            }
+            else if (_storageProvider is "S3" or "MinIO")
+            {
+                <div class="flex mt-1r">
+                    <input class="nb-input mono" placeholder="@L["sett.accessKey"]" @bind="_s3Access" />
+                    <input class="nb-input mono" type="password" placeholder="@L["sett.secretKey"]" @bind="_s3Secret" />
+                </div>
+                <div class="flex mt-1r">
+                    <input class="nb-input mono" placeholder="@L["sett.bucket"]" @bind="_s3Bucket" />
+                    <input class="nb-input mono" placeholder="@L["sett.serviceUrl"]" @bind="_s3Url" />
+                </div>
+            }
+        </div>
+
+        <!-- ===== Integrasi ===== -->
+        <div class="nb-card mt-1r">
+            <h3>@L["sett.integration"]</h3>
+            <label class="nb-label">@L["sett.tavily"]</label>
+            <input class="nb-input mono" type="password" @bind="_tavilyKey" placeholder="tvly-…" />
+            <label class="nb-label" style="margin-top:.6rem">@L["sett.restKey"]</label>
+            <input class="nb-input mono" @bind="_apiKey" />
+            <label class="nb-label" style="margin-top:.6rem">@L["sett.embeddingKey"]</label>
+            <input class="nb-input mono" type="password" @bind="_embeddingKey" placeholder="@L["sett.embeddingPh"]" />
+        </div>
+
+        <!-- ===== Database (info) ===== -->
+        <div class="nb-card nb-info mt-1r" style="font-size:.85rem">
+            @L["sett.dbActive"] <span class="mono">@Cfg.Get("Database:Provider", "SQLite")</span>.<br />
+            @L["sett.dbChange"]
+        </div>
+    </div>
+</div>
+
+<div class="flex mt-1r">
+    <button class="nb-btn primary" @onclick="Save">@L["sett.saveAll"]</button>
+    @if (_saved)
+    {
+        <span class="nb-chip green">@L["sett.saved"]</span>
+    }
+</div>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private string _llmProvider = "OpenAI", _llmModel = "", _llmApiKey = "", _llmEndpoint = "";
+    private double _temperature = 0.7;
+    private int _maxTokens = 2048;
+    private string _systemPrompt = "";
+    private string _storageProvider = "FileSystem", _azureCs = "", _s3Access = "", _s3Secret = "", _s3Bucket = "", _s3Url = "";
+    private string _tavilyKey = "", _apiKey = "", _embeddingKey = "";
+    private bool _saved;
+
+    protected override void OnInitialized()
+    {
+        _llmProvider = Cfg.Get("Llm:Provider", "OpenAI");
+        _llmModel = Cfg.Get($"Llm:{_llmProvider}:Model", "");
+        _llmApiKey = Cfg.Get($"Llm:{_llmProvider}:ApiKey", "");
+        _llmEndpoint = Cfg.Get($"Llm:{_llmProvider}:Endpoint", "");
+        _temperature = Cfg.GetDouble("Llm:Temperature", 0.7);
+        _maxTokens = (int)Cfg.GetDouble("Llm:MaxTokens", 2048);
+        _systemPrompt = Cfg.Get("Llm:SystemPrompt", "");
+        _storageProvider = Cfg.Get("Storage:Provider", "FileSystem");
+        _azureCs = Cfg.Get("Storage:Azure:ConnectionString", "");
+        var pre = _storageProvider == "MinIO" ? "Storage:MinIO" : "Storage:S3";
+        _s3Access = Cfg.Get($"{pre}:AccessKey", "");
+        _s3Secret = Cfg.Get($"{pre}:SecretKey", "");
+        _s3Bucket = Cfg.Get($"{pre}:Bucket", "hajjvr");
+        _s3Url = Cfg.Get($"{pre}:ServiceUrl", "");
+        _tavilyKey = Cfg.Get("Tavily:ApiKey", "");
+        _apiKey = Cfg.Get("Api:Key", "hajjvr-demo-key");
+        _embeddingKey = Cfg.Get("Embedding:ApiKey", "");
+    }
+
+    private async Task Save()
+    {
+        await Cfg.SetAsync("Llm:Provider", _llmProvider);
+        if (!string.IsNullOrWhiteSpace(_llmModel)) await Cfg.SetAsync($"Llm:{_llmProvider}:Model", _llmModel);
+        await Cfg.SetAsync($"Llm:{_llmProvider}:ApiKey", _llmApiKey);
+        if (!string.IsNullOrWhiteSpace(_llmEndpoint)) await Cfg.SetAsync($"Llm:{_llmProvider}:Endpoint", _llmEndpoint);
+        await Cfg.SetAsync("Llm:Temperature", _temperature.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        await Cfg.SetAsync("Llm:MaxTokens", _maxTokens.ToString());
+        await Cfg.SetAsync("Llm:SystemPrompt", _systemPrompt);
+
+        await Cfg.SetAsync("Storage:Provider", _storageProvider);
+        if (_storageProvider == "AzureBlob") await Cfg.SetAsync("Storage:Azure:ConnectionString", _azureCs);
+        if (_storageProvider is "S3" or "MinIO")
+        {
+            var pre = _storageProvider == "MinIO" ? "Storage:MinIO" : "Storage:S3";
+            await Cfg.SetAsync($"{pre}:AccessKey", _s3Access);
+            await Cfg.SetAsync($"{pre}:SecretKey", _s3Secret);
+            await Cfg.SetAsync($"{pre}:Bucket", _s3Bucket);
+            await Cfg.SetAsync($"{pre}:ServiceUrl", _s3Url);
+        }
+
+        await Cfg.SetAsync("Tavily:ApiKey", _tavilyKey);
+        await Cfg.SetAsync("Api:Key", _apiKey);
+        await Cfg.SetAsync("Embedding:ApiKey", _embeddingKey);
+        Search.Invalidate();
+        _saved = true;
+    }
+}

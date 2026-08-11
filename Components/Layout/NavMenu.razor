@@ -1,0 +1,63 @@
+@inject LocalizationService L
+@implements IDisposable
+
+<aside class="sidebar @(Open ? "open" : null)" @onclick="OnClose">
+    <div class="brand">
+        <span class="brand-mark">🕋</span>
+        <span class="brand-name">HajjVR</span>
+        <span class="brand-sub">@L["app.subtitle"]</span>
+    </div>
+    <nav>
+        <NavLink class="nav-item" href="/" Match="NavLinkMatch.All"><span>🏠</span> @L["nav.home"]</NavLink>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-group">@L["nav.groupSim"]</div>
+                <NavLink class="nav-item" href="/simulation"><span>🕋</span> @L["nav.simulation"]</NavLink>
+                <NavLink class="nav-item" href="/map"><span>🗺️</span> @L["nav.map"]</NavLink>
+                <NavLink class="nav-item" href="/rituals"><span>📿</span> @L["nav.rituals"]</NavLink>
+
+                <div class="nav-group">@L["nav.groupAsst"]</div>
+                <NavLink class="nav-item" href="/chat"><span>💬</span> @L["nav.chat"]</NavLink>
+                <NavLink class="nav-item" href="/search"><span>🔎</span> @L["nav.search"]</NavLink>
+
+                <div class="nav-group">@L["nav.groupComm"]</div>
+                <NavLink class="nav-item" href="/leaderboard"><span>🏅</span> @L["nav.leaderboard"]</NavLink>
+                <NavLink class="nav-item" href="/profile"><span>👤</span> @L["nav.profile"]</NavLink>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Admin,Operator,Pembimbing">
+            <Authorized>
+                <div class="nav-group">@L["nav.groupMgmt"]</div>
+                <NavLink class="nav-item" href="/dashboard"><span>📊</span> @L["nav.dashboard"]</NavLink>
+                <NavLink class="nav-item" href="/reports"><span>📑</span> @L["nav.reports"]</NavLink>
+                <NavLink class="nav-item" href="/jamaah"><span>🧕</span> @L["nav.jamaah"]</NavLink>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Admin,Operator">
+            <Authorized>
+                <div class="nav-group">@L["nav.groupSys"]</div>
+                <NavLink class="nav-item" href="/admin/users"><span>👥</span> @L["nav.users"]</NavLink>
+                <NavLink class="nav-item" href="/admin/settings"><span>⚙️</span> @L["nav.settings"]</NavLink>
+                <NavLink class="nav-item" href="/stress-test"><span>⚡</span> @L["nav.stress"]</NavLink>
+                <a class="nav-item" href="/swagger" target="_blank"><span>🔌</span> API (Swagger)</a>
+            </Authorized>
+        </AuthorizeView>
+    </nav>
+    <div class="sidebar-footer">
+        <div class="footer-ayah">وَمَنْ أَرَادَ الْآخِرَةَ وَسَعَىٰ لَهَا سَعْيَهَا</div>
+        <div>HajjVR v1.0 · Blazor Server .NET 10</div>
+        <div>Three.js · Semantic Kernel</div>
+    </div>
+</aside>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    protected override void OnInitialized() => L.OnChanged += StateHasChanged;
+
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+}

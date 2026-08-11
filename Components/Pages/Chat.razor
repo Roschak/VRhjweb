@@ -1,0 +1,240 @@
+@page "/chat"
+@attribute [Authorize]
+@inject ChatAiService ChatAi
+@inject AuthService Auth
+@inject AuthenticationStateProvider AuthState
+@inject IStorageService Storage
+@inject KernelFactory Kernels
+@inject IJSRuntime JS
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["chat.pageTitle"]</PageTitle>
+
+<div class="flex space-between flex-wrap mb-1r">
+    <h1>🤠 Haji Sule <span class="muted" style="font-size:.9rem">@L["chat.subtitle"]</span></h1>
+    <span class="nb-chip blue" title="@L["chat.modelActive"]">🧠 @_cfg?.Provider / @_cfg?.Model</span>
+</div>
+
+<div class="chat-layout">
+    <!-- ===== Daftar Sesi ===== -->
+    <div class="nb-card chat-sessions">
+        <button class="nb-btn primary small" style="width:100%; justify-content:center; margin-bottom:.7rem" @onclick="NewSession">
+            @L["chat.newSession"]
+        </button>
+        @foreach (var s in _sessions)
+        {
+            <div class="session-item @(s.Id == _activeSessionId ? "active" : null)" @onclick="() => SelectSession(s.Id)">
+                <span class="title">@s.Title</span>
+                <button class="nb-btn small danger" title="@L["chat.deleteSession"]" @onclick:stopPropagation="true" @onclick="() => DeleteSession(s.Id)">✕</button>
+            </div>
+        }
+        @if (_activeSessionId is not null)
+        {
+            <button class="nb-btn small mt-1r" style="width:100%; justify-content:center" @onclick="ResetSession">@L["chat.resetSession"]</button>
+        }
+    </div>
+
+    <!-- ===== Thread ===== -->
+    <div class="nb-card chat-main" style="padding:0">
+        <div class="chat-thread" @ref="_threadEl">
+            @if (_messages.Count == 0 && !_busy)
+            {
+                <div class="nb-card nb-gold nb-flat" style="align-self:center; max-width:520px; text-align:center">
+                    <div style="font-size:2.5rem">🤠</div>
+                    <strong>@L["chat.greeting"]</strong>
+                    <p class="muted" style="font-size:.85rem; margin:0">
+                        @L["chat.greetingText"]
+                    </p>
+                </div>
+            }
+            @foreach (var m in _messages)
+            {
+                <div class="chat-bubble @(m.Role == "user" ? "user" : "assistant")">
+                    <div class="who">@(m.Role == "user" ? L["chat.you"] : "🤠 Haji Sule")</div>
+                    @((MarkupString)MarkdownService.ToHtml(m.Content))
+                    @if (!string.IsNullOrEmpty(m.AttachmentsJson))
+                    {
+                        <div class="chat-attachments" style="margin-top:.4rem">
+                            @foreach (var a in Parse(m.AttachmentsJson))
+                            {
+                                @if (a.IsImage)
+                                {
+                                    <img src="@a.Url" alt="@a.Name" style="max-width:200px" />
+                                }
+                                else
+                                {
+                                    <a class="nb-chip blue" href="@a.Url" target="_blank">📎 @a.Name</a>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            @if (_busy)
+            {
+                <div class="chat-bubble assistant">
+                    <div class="who">🤠 Haji Sule</div>
+                    @if (_streamText.Length > 0)
+                    {
+                        @((MarkupString)MarkdownService.ToHtml(_streamText))
+                    }
+                    <span class="typing-dots"></span>
+                </div>
+            }
+        </div>
+
+        <!-- ===== Compose ===== -->
+        <div class="chat-compose">
+            @if (_pendingAttachments.Count > 0)
+            {
+                <div class="chat-attachments">
+                    @foreach (var a in _pendingAttachments)
+                    {
+                        <span class="nb-chip orange">
+                            @(a.IsImage ? "🖼️" : "📎") @a.Name
+                            <button style="border:none;background:none;cursor:pointer" @onclick="() => _pendingAttachments.Remove(a)">✕</button>
+                        </span>
+                    }
+                </div>
+            }
+            <div class="flex">
+                <label class="nb-btn small" title="@L["chat.attach"]">
+                    📎
+                    <InputFile OnChange="OnFilesSelected" multiple style="display:none"
+                               accept="image/*,.pdf,.doc,.docx,.txt,.md,.csv,.xlsx" />
+                </label>
+                <textarea class="nb-textarea" rows="2" placeholder="@L["chat.placeholder"]"
+                          @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown" disabled="@_busy"></textarea>
+                <button class="nb-btn primary" @onclick="Send" disabled="@(_busy || string.IsNullOrWhiteSpace(_input))">➤</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private AppUser? _user;
+    private List<ChatSession> _sessions = [];
+    private string? _activeSessionId;
+    private List<ChatMessageEntity> _messages = [];
+    private readonly List<ChatAttachment> _pendingAttachments = [];
+    private string _input = "";
+    private string _streamText = "";
+    private bool _busy;
+    private ElementReference _threadEl;
+    private KernelFactory.LlmConfig? _cfg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cfg = Kernels.GetConfig();
+        _user = await Auth.GetCurrentUserAsync(AuthState);
+        if (_user is null) return;
+        _sessions = await ChatAi.GetSessionsAsync(_user.Id);
+        if (_sessions.Count == 0)
+            _sessions.Add(await ChatAi.CreateSessionAsync(_user.Id));
+        await SelectSession(_sessions[0].Id);
+    }
+
+    private async Task SelectSession(string id)
+    {
+        _activeSessionId = id;
+        _messages = await ChatAi.GetMessagesAsync(id);
+        await ScrollDown();
+    }
+
+    private async Task NewSession()
+    {
+        if (_user is null) return;
+        var s = await ChatAi.CreateSessionAsync(_user.Id);
+        _sessions.Insert(0, s);
+        await SelectSession(s.Id);
+    }
+
+    private async Task DeleteSession(string id)
+    {
+        await ChatAi.DeleteSessionAsync(id);
+        _sessions.RemoveAll(s => s.Id == id);
+        if (_activeSessionId == id)
+        {
+            if (_sessions.Count == 0 && _user is not null) _sessions.Add(await ChatAi.CreateSessionAsync(_user.Id));
+            await SelectSession(_sessions[0].Id);
+        }
+    }
+
+    private async Task ResetSession()
+    {
+        if (_activeSessionId is null) return;
+        await ChatAi.ResetSessionAsync(_activeSessionId);
+        _messages.Clear();
+        var s = _sessions.First(x => x.Id == _activeSessionId);
+        s.Title = L["chat.newTitle"];
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(5))
+        {
+            await using var stream = file.OpenReadStream(15 * 1024 * 1024);
+            var url = await Storage.SaveAsync(stream, file.Name, file.ContentType);
+            _pendingAttachments.Add(new ChatAttachment(url, file.Name, file.ContentType,
+                file.ContentType.StartsWith("image/")));
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !_busy && !string.IsNullOrWhiteSpace(_input))
+            await Send();
+    }
+
+    private async Task Send()
+    {
+        if (_activeSessionId is null || _busy) return;
+        var text = _input.Trim();
+        var atts = _pendingAttachments.ToList();
+        _input = "";
+        _pendingAttachments.Clear();
+        _busy = true;
+        _streamText = "";
+
+        _messages.Add(new ChatMessageEntity
+        {
+            Role = "user",
+            Content = text,
+            AttachmentsJson = atts.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(atts) : null
+        });
+        StateHasChanged();
+        await ScrollDown();
+
+        var answer = await ChatAi.SendAsync(_activeSessionId, text, atts, delta =>
+        {
+            _streamText += delta;
+            _ = InvokeAsync(async () => { StateHasChanged(); await ScrollDown(); });
+        });
+
+        _messages.Add(new ChatMessageEntity { Role = "assistant", Content = answer });
+        _busy = false;
+        _streamText = "";
+        // perbarui judul sesi di sidebar
+        var s = _sessions.First(x => x.Id == _activeSessionId);
+        if (s.Title == L["chat.newTitle"] && text.Length > 0)
+            s.Title = text.Length > 60 ? text[..60] + "…" : text;
+        StateHasChanged();
+        await ScrollDown();
+    }
+
+    private async Task ScrollDown()
+    {
+        try { await JS.InvokeVoidAsync("hajjvrUtil.scrollToBottom", _threadEl); } catch { }
+    }
+
+    private static List<ChatAttachment> Parse(string json)
+        => System.Text.Json.JsonSerializer.Deserialize<List<ChatAttachment>>(json) ?? [];
+}

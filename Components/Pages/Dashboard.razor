@@ -1,0 +1,153 @@
+@page "/dashboard"
+@attribute [Authorize]
+@implements IDisposable
+@inject AnalyticsService Analytics
+@inject LocalizationService L
+
+<PageTitle>@L["dash.pageTitle"]</PageTitle>
+
+<div class="flex space-between flex-wrap">
+    <h1>📊 @L["nav.dashboard"]</h1>
+    <span class="nb-chip blue">@L["dash.autoRefresh"]</span>
+</div>
+
+@if (_summary is null)
+{
+    <p>@L["common.loading"]</p>
+}
+else
+{
+    <div class="stat-grid mt-1r">
+        <StatCard Label="@L["dash.totalJamaah"]" Value="@_summary.TotalJamaah.ToString("n0")" Icon="🧕" CssClass="nb-primary"
+                  Sub="@string.Format(L["dash.mentors"], _summary.TotalPembimbing.ToString("n0"))" />
+        <StatCard Label="@L["dash.avgProgress"]" Value="@($"{_summary.AvgProgressPercent}%")" Icon="📈" CssClass="nb-info" />
+        <StatCard Label="@L["dash.completedUmrah"]" Value="@_summary.UmrahCompleted.ToString()" Icon="🌙" CssClass="nb-gold"
+                  Sub="@string.Format(L["dash.hajiDone"], _summary.HajiCompleted.ToString())" />
+        <StatCard Label="@L["dash.activeNow"]" Value="@_summary.Activities24h.ToString("n0")" Icon="⚡" CssClass="nb-accent"
+                  Sub="@string.Format(L["dash.chatSessions"], _summary.ChatSessions.ToString())" />
+    </div>
+
+    <div class="grid-2 mt-1r">
+        <div class="nb-card">
+            <h3>@L["dash.progressByRitual"]</h3>
+            <svg viewBox="0 0 640 @(_ritualStats.Count * 34 + 10)" style="width:100%">
+                @{ int maxTotal = Math.Max(1, _ritualStats.Max(r => r.NotStarted + r.InProgress + r.Completed)); }
+                @for (int i = 0; i < _ritualStats.Count; i++)
+                {
+                    var r = _ritualStats[i];
+                    int y = i * 34 + 6;
+                    double scale = 380.0 / maxTotal;
+                    double wDone = r.Completed * scale, wProg = r.InProgress * scale, wNot = r.NotStarted * scale;
+                    @((MarkupString)$"<text x='0' y='{y + 15}' font-size='12' font-weight='700' fill='var(--ink)'>{System.Net.WebUtility.HtmlEncode(RitualName(r.Ritual))}</text>")
+                    <rect x="180" y="@y" width="@wDone" height="20" fill="var(--primary)" stroke="var(--border)" stroke-width="1.5" rx="4" />
+                    <rect x="@(180 + wDone)" y="@y" width="@wProg" height="20" fill="var(--accent)" stroke="var(--border)" stroke-width="1.5" rx="4" />
+                    <rect x="@(180 + wDone + wProg)" y="@y" width="@wNot" height="20" fill="var(--bg-2)" stroke="var(--border)" stroke-width="1.5" rx="4" />
+                    @((MarkupString)$"<text x='{(190 + wDone + wProg + wNot).ToString("0", System.Globalization.CultureInfo.InvariantCulture)}' y='{y + 15}' font-size='11' fill='var(--ink-soft)'>{r.Completed} ✔</text>")
+                }
+            </svg>
+            <div class="flex flex-wrap" style="font-size:.8rem">
+                <span class="nb-chip green">■ @L["dash.done"]</span>
+                <span class="nb-chip orange">■ @L["dash.inProgress"]</span>
+                <span class="nb-chip">■ @L["dash.notStarted"]</span>
+            </div>
+        </div>
+
+        <div class="nb-card">
+            <h3>@L["dash.crowdNow"]</h3>
+            @{ int maxCrowd = Math.Max(1, _zones.Count > 0 ? _zones.Max(z => z.Count) : 1); }
+            @foreach (var z in _zones)
+            {
+                <div class="flex" style="margin-bottom:.55rem">
+                    <div style="width:170px; font-size:.85rem; font-weight:700">@ZoneName(z.Zone)</div>
+                    <div class="nb-progress" style="flex:1; height:18px">
+                        <div style="width:@(100.0 * z.Count / maxCrowd)%; background:@CrowdColor(z.Count, maxCrowd)"></div>
+                    </div>
+                    <div class="mono" style="width:80px; text-align:end; font-size:.82rem">@z.Count.ToString("n0")</div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="nb-card mt-1r">
+        <h3>@L["dash.heatmapTitle"]</h3>
+        <div class="table-wrap">
+            <div class="heatmap" style="grid-template-columns: 160px repeat(24, 1fr); min-width:820px">
+                <div></div>
+                @for (int h = 0; h < 24; h++)
+                {
+                    <div style="font-size:.65rem; text-align:center" class="muted">@h</div>
+                }
+                @foreach (var zone in _heatZones)
+                {
+                    <div class="zone-label">@ZoneName(zone)</div>
+                    @for (int h = 0; h < 24; h++)
+                    {
+                        var cell = _heat.FirstOrDefault(c => c.Zone == zone && c.Hour == h);
+                        var intensity = cell is null ? 0 : Math.Min(1.0, (double)cell.Count / _heatMax);
+                        <div class="cell" title="@($"{ZoneName(zone)} @ {h}:00 — {cell?.Count ?? 0:n0} {L["dash.people"]}")"
+                             style="background:@HeatColor(intensity)"></div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+
+    private DashboardSummary? _summary;
+    private List<RitualStat> _ritualStats = [];
+    private List<HeatCell> _heat = [];
+    private List<string> _heatZones = [];
+    private List<ZoneNow> _zones = [];
+    private int _heatMax = 1;
+    private Timer? _timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _timer = new Timer(async _ => { await LoadAsync(); await InvokeAsync(StateHasChanged); },
+            null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task LoadAsync()
+    {
+        _summary = await Analytics.GetSummaryAsync();
+        _ritualStats = await Analytics.GetRitualStatsAsync();
+        _heat = await Analytics.GetHeatmapAsync();
+        _zones = await Analytics.GetZonesNowAsync();
+        _heatZones = _heat.Select(h => h.Zone).Distinct().OrderBy(z => z).ToList();
+        _heatMax = Math.Max(1, _heat.Count > 0 ? _heat.Max(h => h.Count) : 1);
+    }
+
+    private string RitualName(RitualType r) => L[$"rit.{r}"];
+
+    private string ZoneName(string zone)
+    {
+        var key = $"zone.{zone}";
+        var v = L[key];
+        return v == key ? zone : v;
+    }
+
+    private static string HeatColor(double t) =>
+        t <= 0 ? "var(--bg-2)"
+        : $"color-mix(in srgb, var(--danger) {(int)(t * 100)}%, var(--gold-soft))";
+
+    private static string CrowdColor(int count, int max)
+    {
+        double t = (double)count / max;
+        return t > .75 ? "var(--danger)" : t > .45 ? "var(--accent)" : "var(--primary)";
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        L.OnChanged -= StateHasChanged;
+    }
+}
+

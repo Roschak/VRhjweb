@@ -1,0 +1,91 @@
+@inject LocalizationService L
+
+<!DOCTYPE html>
+<html lang="@L.Lang" dir="@(L.IsRtl ? "rtl" : "ltr")">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <ResourcePreloader />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Amiri:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["HajjVR.styles.css"]" />
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script>
+        // Tema light/dark + bahasa: terapkan sebelum render untuk mencegah flash
+        (function () {
+            const savedTheme = localStorage.getItem('hajjvr-theme');
+            const theme = savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', theme);
+            const lang = localStorage.getItem('hajjvr-lang')
+                || (document.cookie.match(/(?:^|;\s*)hajjvr-lang=([^;]*)/) || [])[1] || 'id';
+            document.documentElement.setAttribute('lang', lang);
+            if (lang === 'ar') document.documentElement.setAttribute('dir', 'rtl');
+        })();
+        window.hajjvrTheme = {
+            get: () => document.documentElement.getAttribute('data-theme'),
+            toggle: () => {
+                const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('hajjvr-theme', next);
+                return next;
+            }
+        };
+        const clickOutsideHandlers = {};
+        window.hajjvrUtil = {
+            scrollToBottom: (el) => { if (el) el.scrollTop = el.scrollHeight; },
+            addClickOutside: (dotNetRef, id) => {
+                if (clickOutsideHandlers[id]) document.removeEventListener('click', clickOutsideHandlers[id]);
+                // Elemen di-query ulang setiap klik supaya referensi DOM selalu segar
+                // (misal setelah Blazor men-diff ulang topbar) dan klik trigger tidak
+                // pernah tertutup oleh handler ini.
+                const handler = (e) => {
+                    const el = document.getElementById(id);
+                    if (!el || el.contains(e.target)) return;
+                    dotNetRef.invokeMethodAsync('CloseMenu').catch(() => { });
+                };
+                clickOutsideHandlers[id] = handler;
+                document.addEventListener('click', handler);
+            },
+            removeClickOutside: (id) => {
+                if (clickOutsideHandlers[id]) { document.removeEventListener('click', clickOutsideHandlers[id]); delete clickOutsideHandlers[id]; }
+            },
+            downloadUrl: (url) => { const a = document.createElement('a'); a.href = url; a.download = ''; document.body.appendChild(a); a.click(); a.remove(); },
+            setDir: (rtl) => { document.documentElement.setAttribute('dir', rtl ? 'rtl' : 'ltr'); },
+            getLang: () => localStorage.getItem('hajjvr-lang') || 'id',
+            setLang: (code) => {
+                localStorage.setItem('hajjvr-lang', code);
+                document.documentElement.setAttribute('lang', code);
+                document.documentElement.setAttribute('dir', code === 'ar' ? 'rtl' : 'ltr');
+                document.cookie = 'hajjvr-lang=' + code + '; path=/; max-age=31536000; SameSite=Lax';
+            },
+            fullscreen: (id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (document.fullscreenElement) document.exitFullscreen();
+                else el.requestFullscreen?.();
+            }
+        };
+    </script>
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+
+</html>

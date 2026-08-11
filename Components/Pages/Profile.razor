@@ -1,0 +1,123 @@
+@page "/profile"
+@attribute [Authorize]
+@inject AuthService Auth
+@inject AuthenticationStateProvider AuthState
+@inject GamificationService Gamification
+@inject IStorageService Storage
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["prof.pageTitle"]</PageTitle>
+
+<h1>@L["prof.title"]</h1>
+
+@if (_user is null)
+{
+    <p>@L["common.loading"]</p>
+}
+else
+{
+    <div class="grid-2 mt-1r">
+        <div class="nb-card">
+            <h3>@L["prof.bio"]</h3>
+            <div class="flex mb-1r">
+                @if (!string.IsNullOrEmpty(_user.AvatarUrl))
+                {
+                    <img src="@_user.AvatarUrl" alt="avatar" style="width:72px;height:72px;border-radius:50%;border:2.5px solid var(--border);object-fit:cover" />
+                }
+                else
+                {
+                    <div style="width:72px;height:72px;border-radius:50%;border:2.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:2rem;background:var(--primary-soft)">👤</div>
+                }
+                <div>
+                    <strong>@_user.UserName</strong><br />
+                    <span class="nb-chip green">@_user.Role</span>
+                </div>
+            </div>
+            <label class="nb-label">@L["prof.fullName"]</label>
+            <input class="nb-input" @bind="_user.DisplayName" />
+            <label class="nb-label" style="margin-top:.6rem">@L["prof.email"]</label>
+            <input class="nb-input" @bind="_user.Email" />
+            <label class="nb-label" style="margin-top:.6rem">@L["prof.avatar"]</label>
+            <InputFile OnChange="OnAvatarSelected" class="nb-input" accept="image/*" />
+            <button class="nb-btn primary mt-1r" @onclick="SaveProfile">@L["prof.save"]</button>
+            @if (_savedMsg is not null)
+            {
+                <span class="nb-chip green" style="margin-left:.5rem">@_savedMsg</span>
+            }
+        </div>
+
+        <div class="nb-card">
+            <h3>@L["prof.changePass"]</h3>
+            <label class="nb-label">@L["prof.oldPass"]</label>
+            <input class="nb-input" type="password" @bind="_oldPass" />
+            <label class="nb-label" style="margin-top:.6rem">@L["prof.newPass"]</label>
+            <input class="nb-input" type="password" @bind="_newPass" />
+            <button class="nb-btn accent mt-1r" @onclick="ChangePassword">@L["prof.changePassBtn"]</button>
+            @if (_passMsg is not null)
+            {
+                <div class="mt-1r">@_passMsg</div>
+            }
+        </div>
+    </div>
+
+    <div class="nb-card mt-1r">
+        <h3>@L["prof.badges"]</h3>
+        <div class="flex flex-wrap">
+            @foreach (var (badge, owned, at) in _badges)
+            {
+                <div class="nb-card nb-flat @(owned ? "nb-gold" : null)" style="padding:.7rem 1rem; opacity:@(owned ? "1" : ".45"); min-width:180px">
+                    <div style="font-size:1.6rem">@badge.Icon</div>
+                    <strong>@badge.Name</strong>
+                    <div class="muted" style="font-size:.78rem">@badge.Description</div>
+                    <div class="nb-chip @(owned ? "gold" : null)" style="margin-top:.3rem">+@badge.Points @L["prof.points"] @(owned && at is not null ? $"· {at:dd MMM}" : "")</div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private AppUser? _user;
+    private List<(Badge Badge, bool Owned, DateTime? AwardedAt)> _badges = [];
+    private string _oldPass = "", _newPass = "";
+    private string? _savedMsg, _passMsg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await Auth.GetCurrentUserAsync(AuthState);
+        if (_user is not null)
+            _badges = await Gamification.GetUserBadgesAsync(_user.Id);
+    }
+
+    private async Task OnAvatarSelected(InputFileChangeEventArgs e)
+    {
+        if (_user is null) return;
+        var file = e.File;
+        await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        _user.AvatarUrl = await Storage.SaveAsync(stream, file.Name, file.ContentType);
+    }
+
+    private async Task SaveProfile()
+    {
+        if (_user is null) return;
+        await Auth.UpdateProfileAsync(_user);
+        _savedMsg = L["prof.saved"];
+    }
+
+    private async Task ChangePassword()
+    {
+        if (_user is null) return;
+        if (_newPass.Length < 6) { _passMsg = L["prof.passShort"]; return; }
+        var ok = await Auth.ChangePasswordAsync(_user.Id, _oldPass, _newPass);
+        _passMsg = ok ? L["prof.passOk"] : L["prof.passWrong"];
+        if (ok) { _oldPass = _newPass = ""; }
+    }
+}

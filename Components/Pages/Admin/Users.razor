@@ -1,0 +1,171 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = "Admin,Operator")]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["users.pageTitle"]</PageTitle>
+
+<div class="flex space-between flex-wrap">
+    <h1>@L["users.title"]</h1>
+    <button class="nb-btn primary" @onclick="() => _showNew = !_showNew">@L["users.newUser"]</button>
+</div>
+
+@if (_showNew)
+{
+    <div class="nb-card nb-accent mt-1r">
+        <h3>@L["users.newUserTitle"]</h3>
+        <div class="flex flex-wrap">
+            <input class="nb-input" style="max-width:200px" placeholder="@L["users.username"]" @bind="_new.UserName" />
+            <input class="nb-input" style="max-width:240px" placeholder="@L["users.fullName"]" @bind="_new.DisplayName" />
+            <input class="nb-input" style="max-width:240px" placeholder="@L["users.email"]" @bind="_new.Email" />
+            <select class="nb-select" style="max-width:160px" @bind="_new.Role">
+                @foreach (var r in Roles.All)
+                {
+                    <option>@r</option>
+                }
+            </select>
+            <input class="nb-input" style="max-width:180px" type="password" placeholder="@L["users.password"]" @bind="_newPassword" />
+            <button class="nb-btn primary" @onclick="CreateUser">@L["common.save"]</button>
+        </div>
+        @if (_error is not null)
+        {
+            <div class="nb-chip red mt-1r">@_error</div>
+        }
+    </div>
+}
+
+<div class="flex mt-1r">
+    <input class="nb-input" style="max-width:280px" placeholder="@L["common.search"]…" @bind="_filter" @bind:event="oninput" />
+    <select class="nb-select" style="width:auto" @bind="_roleFilter">
+        <option value="">@L["users.allRoles"]</option>
+        @foreach (var r in Roles.All)
+        {
+            <option>@r</option>
+        }
+    </select>
+</div>
+
+<div class="table-wrap mt-1r">
+    <table class="nb-table">
+        <thead>
+            <tr><th>@L["users.username"]</th><th>@L["users.name"]</th><th>@L["users.email"]</th><th>@L["users.role"]</th><th>@L["users.status"]</th><th>@L["users.created"]</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var u in Filtered)
+            {
+                <tr>
+                    <td class="mono">@u.UserName</td>
+                    <td>@u.DisplayName</td>
+                    <td>@u.Email</td>
+                    <td>
+                        <select class="nb-select" style="padding:.15rem .4rem; font-size:.8rem; width:auto"
+                                value="@u.Role" @onchange="e => ChangeRole(u, e.Value!.ToString()!)">
+                            @foreach (var r in Roles.All)
+                            {
+                                <option>@r</option>
+                            }
+                        </select>
+                    </td>
+                    <td>
+                        <button class="nb-btn small @(u.IsActive ? "primary" : "danger")" @onclick="() => ToggleActive(u)">
+                            @(u.IsActive ? L["users.active"] : L["users.inactive"])
+                        </button>
+                    </td>
+                    <td class="mono">@u.CreatedAt.ToString("dd/MM/yy")</td>
+                    <td>
+                        @if (u.Role != Roles.Admin)
+                        {
+                            <button class="nb-btn small danger" @onclick="() => DeleteUser(u)">🗑️</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private List<AppUser> _users = [];
+    private string _filter = "", _roleFilter = "";
+    private bool _showNew;
+    private AppUser _new = new() { Role = Roles.Jamaah };
+    private string _newPassword = "";
+    private string? _error;
+
+    private IEnumerable<AppUser> Filtered => _users.Where(u =>
+        (string.IsNullOrEmpty(_filter)
+            || u.UserName.Contains(_filter, StringComparison.OrdinalIgnoreCase)
+            || u.DisplayName.Contains(_filter, StringComparison.OrdinalIgnoreCase))
+        && (string.IsNullOrEmpty(_roleFilter) || u.Role == _roleFilter));
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _users = await db.Users.OrderBy(u => u.Role).ThenBy(u => u.UserName).ToListAsync();
+    }
+
+    private async Task CreateUser()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_new.UserName) || _newPassword.Length < 6)
+        {
+            _error = L["users.errRequired"];
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (await db.Users.AnyAsync(u => u.UserName == _new.UserName))
+        {
+            _error = L["users.errExists"];
+            return;
+        }
+        _new.PasswordHash = PasswordHasher.Hash(_newPassword);
+        db.Users.Add(_new);
+        if (_new.Role == Roles.Jamaah)
+            db.JamaahProfiles.Add(new JamaahProfile { User = _new, GroupName = "Baru" });
+        await db.SaveChangesAsync();
+        _new = new AppUser { Role = Roles.Jamaah };
+        _newPassword = "";
+        _showNew = false;
+        await Load();
+    }
+
+    private async Task ChangeRole(AppUser u, string role)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var user = await db.Users.FindAsync(u.Id);
+        if (user is null) return;
+        user.Role = role;
+        await db.SaveChangesAsync();
+        u.Role = role;
+    }
+
+    private async Task ToggleActive(AppUser u)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var user = await db.Users.FindAsync(u.Id);
+        if (user is null) return;
+        user.IsActive = !user.IsActive;
+        await db.SaveChangesAsync();
+        u.IsActive = user.IsActive;
+    }
+
+    private async Task DeleteUser(AppUser u)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var user = await db.Users.FindAsync(u.Id);
+        if (user is null) return;
+        db.Users.Remove(user);
+        await db.SaveChangesAsync();
+        _users.RemoveAll(x => x.Id == u.Id);
+    }
+}

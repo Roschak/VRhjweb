@@ -1,0 +1,21 @@
+<div class="nb-card stat-card hoverable @CssClass">
+    <div class="flex space-between">
+        <div>
+            <div class="stat-label">@Label</div>
+            <div class="stat-value">@Value</div>
+            @if (Sub is not null)
+            {
+                <div class="muted" style="font-size:.8rem">@Sub</div>
+            }
+        </div>
+        <div class="stat-icon">@Icon</div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "📊";
+    [Parameter] public string? Sub { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+}

@@ -1,0 +1,56 @@
+@page "/leaderboard"
+@attribute [Authorize]
+@inject AnalyticsService Analytics
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["lb.pageTitle"]</PageTitle>
+
+<h1>@L["lb.title"]</h1>
+<p class="muted">@L["lb.subtitle"]</p>
+
+<div class="table-wrap mt-1r">
+    <table class="nb-table">
+        <thead>
+            <tr>
+                <th style="width:60px">#</th>
+                <th>@L["lb.name"]</th>
+                <th>@L["lb.group"]</th>
+                <th>@L["lb.badge"]</th>
+                <th>@L["lb.ritualsDone"]</th>
+                <th>@L["lb.points"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var (e, i) in _entries.Select((e, i) => (e, i)))
+            {
+                <tr>
+                    <td class="@RankClass(i)" style="font-weight:700; text-align:center">
+                        @(i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : (i + 1).ToString())
+                    </td>
+                    <td class="@RankClass(i)">@e.DisplayName</td>
+                    <td class="@RankClass(i)">@e.GroupName</td>
+                    <td class="@RankClass(i)">@e.BadgeCount 🏅</td>
+                    <td class="@RankClass(i)">@e.RitualsCompleted</td>
+                    <td class="@RankClass(i)"><strong class="mono">@e.Points</strong></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private List<LeaderboardEntry> _entries = [];
+
+    protected override async Task OnInitializedAsync()
+        => _entries = await Analytics.GetLeaderboardAsync(25);
+
+    private static string? RankClass(int i) => i switch { 0 => "rank-1", 1 => "rank-2", 2 => "rank-3", _ => null };
+}

@@ -1,0 +1,66 @@
+@page "/jamaah"
+@attribute [Authorize(Roles = "Admin,Operator,Pembimbing")]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["jl.pageTitle"]</PageTitle>
+
+<div class="flex space-between flex-wrap">
+    <h1>@L["jl.title"]</h1>
+    <input class="nb-input" style="max-width:280px" placeholder="@L["jl.searchPh"]" @bind="_filter" @bind:event="oninput" />
+</div>
+
+<div class="table-wrap mt-1r">
+    <table class="nb-table">
+        <thead>
+            <tr>
+                <th>@L["jl.name"]</th>
+                <th>@L["jl.username"]</th>
+                <th>@L["jl.group"]</th>
+                <th>@L["jl.package"]</th>
+                <th>@L["jl.nationality"]</th>
+                <th>@L["jl.phone"]</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var u in Filtered)
+            {
+                <tr>
+                    <td><strong>@u.DisplayName</strong></td>
+                    <td class="mono">@u.UserName</td>
+                    <td>@(u.Profile?.GroupName ?? "-")</td>
+                    <td><span class="nb-chip @(u.Profile?.PackageType == "Haji" ? "gold" : "green")">@(u.Profile?.PackageType ?? "-")</span></td>
+                    <td>@(u.Profile?.Nationality ?? "-")</td>
+                    <td class="mono">@(u.Profile?.Phone ?? "-")</td>
+                    <td><a class="nb-btn small info" href="/jamaah/@u.Id">@L["jl.detail"]</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private List<AppUser> _users = [];
+    private string _filter = "";
+
+    private IEnumerable<AppUser> Filtered => _users.Where(u =>
+        string.IsNullOrEmpty(_filter)
+        || u.DisplayName.Contains(_filter, StringComparison.OrdinalIgnoreCase)
+        || (u.Profile?.GroupName.Contains(_filter, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _users = await db.Users.Include(u => u.Profile)
+            .Where(u => u.Role == Roles.Jamaah).OrderBy(u => u.DisplayName).ToListAsync();
+    }
+}

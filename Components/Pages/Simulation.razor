@@ -1,0 +1,290 @@
+@page "/simulation"
+@attribute [Authorize]
+@implements IAsyncDisposable
+@implements IDisposable
+@inject IJSRuntime JS
+@inject LocalizationService L
+@inject AnalyticsService Analytics
+@inject AuthService Auth
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>@L["sim.pageTitle"]</PageTitle>
+
+<div class="sim-page">
+    <div class="flex space-between flex-wrap">
+        <h1>@L["sim.title"]</h1>
+        <span class="nb-chip blue mono">@string.Format(L["sim.badge"], _stats.Time.ToString("0.0"), _stats.Fps, _stats.Agents.ToString("n0"))</span>
+    </div>
+
+    <!-- ===== Baris 1: Scene + fokus lokasi ===== -->
+    <div class="sim-toolbar mt-1r">
+        @foreach (var (key, label) in Scenes)
+        {
+            <button class="nb-btn small @(_scene == key ? "primary" : null)" @onclick="() => ChangeScene(key)">@label</button>
+        }
+        <span class="muted sim-toolbar-sep">│ @L["sim.focus"]</span>
+        @foreach (var (key, label) in ScenePois)
+        {
+            <button class="nb-btn small info" @onclick="() => FocusOn(key)">@label</button>
+        }
+    </div>
+
+    <!-- ===== Baris 2: Kamera + waktu + opsi ===== -->
+    <div class="sim-toolbar">
+        @foreach (var (key, label) in Cameras)
+        {
+            <button class="nb-btn small @(_cameraMode == key ? "accent" : null)" title="@label" @onclick="() => ChangeCamera(key)">@label</button>
+        }
+        <button class="nb-btn small" title="@L["sim.resetCam"]" @onclick="ResetCamera">@L["sim.resetCam"]</button>
+        <button class="nb-btn small" title="@L["sim.fullscreen"]" @onclick="Fullscreen">@L["sim.fullscreen"]</button>
+
+        <span class="muted sim-toolbar-sep">│</span>
+
+        @foreach (var (jam, label) in TimePresets)
+        {
+            <button class="nb-btn small @(Math.Abs(_timeOfDay - jam) < .3 && !_autoTime ? "primary" : null)" @onclick="() => SetTime(jam)">@label</button>
+        }
+        <label class="nb-chip" title="@L["sim.timeLabel"]">
+            <input type="range" min="0" max="24" step="0.5" value="@_timeOfDay" @oninput="OnTimeChanged" style="width:100px" />
+            <span class="mono">@(_timeOfDay.ToString("0.#"))</span>
+        </label>
+        <button class="nb-btn small @(_autoTime ? "accent" : null)" title="@L["sim.autoCycle"]" @onclick="ToggleAutoTime">
+            @(_autoTime ? L["sim.stopCycle"] : L["sim.autoCycle"])
+        </button>
+    </div>
+
+    <!-- ===== Baris 3: Crowd + simulasi + kualitas ===== -->
+    <div class="sim-toolbar">
+        <label class="nb-chip">@L["sim.crowd"]
+            <input type="range" min="100" max="10000" step="100" value="@_crowd" @onchange="OnCrowdChanged" style="width:110px" />
+            <span class="mono">@_crowd.ToString("n0")</span>
+        </label>
+        <label class="nb-chip">@L["sim.speed"]
+            <input type="range" min="0.25" max="4" step="0.25" value="@_simSpeed" @oninput="OnSpeedChanged" style="width:90px" />
+            <span class="mono">@(_simSpeed)x</span>
+        </label>
+        <button class="nb-btn small @(_paused ? "danger" : null)" @onclick="TogglePause">@(_paused ? L["sim.resume"] : L["sim.pause"])</button>
+        <button class="nb-btn small @(_shadows ? "primary" : null)" title="@L["sim.shadowsOn"]" @onclick="ToggleShadows">
+            @(_shadows ? L["sim.shadowsOn"] : L["sim.shadowsOff"])
+        </button>
+        <button class="nb-btn small info" @onclick="() => _showGuide = !_showGuide">@L["sim.guide"]</button>
+        <button class="nb-btn small" @onclick="() => _showHelp = !_showHelp">@L["sim.controls"]</button>
+    </div>
+
+    <div class="sim-canvas-wrap" id="sim-wrap">
+        <canvas id="sim-canvas" @ref="_canvasEl"></canvas>
+        <div class="sim-hud">
+            @string.Format(L["sim.hud"], _stats.Fps, _stats.Agents.ToString("n0"), _stats.DrawCalls, _stats.Time.ToString("00.0"))
+        </div>
+        @if (_showGuide)
+        {
+            <div class="sim-hud sim-hud-guide">
+                <strong>@GuideTitle</strong>
+                <ol style="margin:.4rem 0 0 1rem; padding:0; font-size:.8rem">
+                    @foreach (var step in GuideSteps)
+                    {
+                        <li>@step</li>
+                    }
+                </ol>
+            </div>
+        }
+        @if (_showHelp)
+        {
+            <div class="sim-hud sim-hud-help">
+                <strong>@L["sim.controlsTitle"]</strong><br />
+                🖱️ <b>@L["sim.bOrbit"]</b>: @L["sim.helpOrbit"]<br />
+                👁️ <b>@L["sim.bFp"]</b>: @L["sim.helpFp"]<br />
+                🚶 <b>@L["sim.bTp"]</b>: @L["sim.helpTp"]<br />
+                🕶️ <b>@L["sim.bVr"]</b>: @L["sim.helpVr"]
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private string _scene = "haram";
+    private string _cameraMode = "orbit";
+    private double _timeOfDay = 10;
+    private int _crowd = 1500;
+    private double _simSpeed = 1;
+    private bool _paused, _shadows, _autoTime;
+    private bool _showGuide = true, _showHelp;
+    private IJSObjectReference? _module;
+    private ElementReference _canvasEl;
+    private Timer? _statsTimer;
+    private (int Fps, int Agents, int DrawCalls, double Time) _stats;
+
+    private (string Key, string Label)[] Scenes =>
+    [
+        ("haram", L["sim.sceneHaram"]),
+        ("nabawi", L["sim.sceneNabawi"]),
+        ("manasik", L["sim.sceneManasik"]),
+    ];
+
+    private (string Key, string Label)[] Cameras =>
+    [
+        ("orbit", L["sim.camOrbit"]),
+        ("bird", L["sim.camBird"]),
+        ("fp", L["sim.camFp"]),
+        ("tp", L["sim.camTp"]),
+    ];
+
+    private (double Jam, string Label)[] TimePresets =>
+    [
+        (5.3, L["sim.tSubuh"]),
+        (12.0, L["sim.tSiang"]),
+        (17.8, L["sim.tMaghrib"]),
+        (21.5, L["sim.tMalam"]),
+    ];
+
+    private static readonly Dictionary<string, (string Key, string Label)[]> PoiMap = new()
+    {
+        ["haram"] = [("kaaba", "🕋 Ka'bah"), ("hijr", "◠ Hijr Ismail"), ("maqam", "✨ Maqam Ibrahim"), ("safa", "⛰ Safa"), ("marwah", "⛰ Marwah"), ("masaa", "🏃 Mas'a"), ("abraj", "🕐 Abraj")],
+        ["nabawi"] = [("masjid", "🕌 Masjid"), ("kubahhijau", "🟢 Kubah Hijau"), ("raudhah", "🌿 Raudhah"), ("payung", "⛱ Payung")],
+        ["manasik"] = [("arafah", "⛰ Arafah"), ("muzdalifah", "🌌 Muzdalifah"), ("jamarat", "🎯 Jamarat"), ("mina", "⛺ Mina"), ("namirah", "🕌 Namirah")],
+    };
+
+    private (string Key, string Label)[] ScenePois => PoiMap.GetValueOrDefault(_scene, []);
+
+    private string GuideTitle => _scene switch
+    {
+        "nabawi" => L["sim.guideNabawi"],
+        "manasik" => L["sim.guideManasik"],
+        _ => L["sim.guideHaram"]
+    };
+
+    private string[] GuideSteps => _scene switch
+    {
+        "nabawi" => [L["sim.n1"], L["sim.n2"], L["sim.n3"], L["sim.n4"]],
+        "manasik" => [L["sim.m1"], L["sim.m2"], L["sim.m3"], L["sim.m4"], L["sim.m5"]],
+        _ => [L["sim.h1"], L["sim.h2"], L["sim.h3"], L["sim.h4"], L["sim.h5"], L["sim.h6"]]
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/hajjvr3d.js");
+        await _module.InvokeAsync<bool>("init", _canvasEl, new { scene = _scene, crowd = _crowd, timeOfDay = _timeOfDay });
+        _statsTimer = new Timer(async _ =>
+        {
+            try
+            {
+                if (_module is null) return;
+                var s = await _module.InvokeAsync<SimStats>("getStats");
+                _stats = (s.fps, s.agents, s.drawCalls, s.time);
+                if (_autoTime) _timeOfDay = s.time;
+                await InvokeAsync(StateHasChanged);
+            }
+            catch { }
+        }, null, 1000, 1000);
+
+        var user = await Auth.GetCurrentUserAsync(AuthState);
+        await Analytics.LogActivityAsync(user?.Id, "BukaSimulasi3D", $"scene={_scene}");
+    }
+
+    private async Task ChangeScene(string key)
+    {
+        _scene = key;
+        if (_module is not null) await _module.InvokeVoidAsync("setScene", key);
+    }
+
+    private async Task ChangeCamera(string key)
+    {
+        _cameraMode = key;
+        if (_module is not null) await _module.InvokeVoidAsync("setCameraMode", key);
+    }
+
+    private async Task FocusOn(string key)
+    {
+        _cameraMode = "orbit";
+        if (_module is not null) await _module.InvokeVoidAsync("focusOn", key);
+    }
+
+    private async Task ResetCamera()
+    {
+        _cameraMode = "orbit";
+        if (_module is not null) await _module.InvokeVoidAsync("resetCamera");
+    }
+
+    private async Task Fullscreen()
+        => await JS.InvokeVoidAsync("hajjvrUtil.fullscreen", "sim-wrap");
+
+    private async Task SetTime(double jam)
+    {
+        _timeOfDay = jam;
+        _autoTime = false;
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("setAutoTime", false, 0.35);
+            await _module.InvokeVoidAsync("setTimeOfDay", jam);
+        }
+    }
+
+    private async Task OnTimeChanged(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var t))
+        {
+            _timeOfDay = t;
+            _autoTime = false;
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("setAutoTime", false, 0.35);
+                await _module.InvokeVoidAsync("setTimeOfDay", t);
+            }
+        }
+    }
+
+    private async Task ToggleAutoTime()
+    {
+        _autoTime = !_autoTime;
+        if (_module is not null) await _module.InvokeVoidAsync("setAutoTime", _autoTime, 0.35);
+    }
+
+    private async Task OnCrowdChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var n))
+        {
+            _crowd = n;
+            if (_module is not null) await _module.InvokeVoidAsync("setCrowd", n);
+        }
+    }
+
+    private async Task OnSpeedChanged(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var x))
+        {
+            _simSpeed = x;
+            if (_module is not null) await _module.InvokeVoidAsync("setSimSpeed", x);
+        }
+    }
+
+    private async Task TogglePause()
+    {
+        _paused = !_paused;
+        if (_module is not null) await _module.InvokeVoidAsync("setPaused", _paused);
+    }
+
+    private async Task ToggleShadows()
+    {
+        _shadows = !_shadows;
+        if (_module is not null) await _module.InvokeVoidAsync("setQuality", _shadows ? "high" : "normal");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _statsTimer?.Dispose();
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("dispose"); await _module.DisposeAsync(); } catch { }
+        }
+    }
+
+    private record SimStats(int fps, int agents, int drawCalls, long triangles, double time, bool paused, bool shadows);
+}

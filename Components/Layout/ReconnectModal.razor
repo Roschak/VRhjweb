@@ -1,0 +1,32 @@
+﻿<script type="module" src="@Assets["Components/Layout/ReconnectModal.razor.js"]"></script>
+@inject LocalizationService L
+
+<dialog id="components-reconnect-modal" data-nosnippet>
+    <div class="components-reconnect-container">
+        <div class="components-rejoining-animation" aria-hidden="true">
+            <div></div>
+            <div></div>
+        </div>
+        <p class="components-reconnect-first-attempt-visible">
+            @L["rc.rejoining"]
+        </p>
+        <p class="components-reconnect-repeated-attempt-visible">
+            @((MarkupString)L["rc.rejoinFail"])
+        </p>
+        <p class="components-reconnect-failed-visible">
+            @((MarkupString)L["rc.failed"])
+        </p>
+        <button id="components-reconnect-button" class="components-reconnect-failed-visible">
+            @L["rc.retry"]
+        </button>
+        <p class="components-pause-visible">
+            @L["rc.paused"]
+        </p>
+        <p class="components-resume-failed-visible">
+            @((MarkupString)L["rc.resumeFailed"])
+        </p>
+        <button id="components-resume-button" class="components-pause-visible components-resume-failed-visible">
+            @L["rc.resume"]
+        </button>
+    </div>
+</dialog>

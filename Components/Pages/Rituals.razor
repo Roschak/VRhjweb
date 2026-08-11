@@ -1,0 +1,157 @@
+@page "/rituals"
+@attribute [Authorize]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthService Auth
+@inject AuthenticationStateProvider AuthState
+@inject GamificationService Gamification
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["rituals.pageTitle"]</PageTitle>
+
+<div class="flex space-between flex-wrap">
+    <h1>@L["rituals.title"]</h1>
+    <div class="flex">
+        <button class="nb-btn small @(_tab == "umrah" ? "primary" : null)" @onclick='() => _tab = "umrah"'>@L["rituals.umrah"]</button>
+        <button class="nb-btn small @(_tab == "haji" ? "primary" : null)" @onclick='() => _tab = "haji"'>@L["rituals.haji"]</button>
+    </div>
+</div>
+
+@if (_newBadges.Count > 0)
+{
+    <div class="nb-card nb-gold mt-1r">
+        @L["rituals.newBadge"]
+        @foreach (var b in _newBadges)
+        {
+            <span class="nb-chip gold">@b.Icon @b.Name (+@b.Points)</span>
+        }
+    </div>
+}
+
+<div class="nb-progress mt-1r" title="@L["rituals.overall"]">
+    <div style="width:@OverallPercent%"></div>
+</div>
+<p class="muted" style="font-size:.85rem">@ProgressText</p>
+
+@foreach (var (ritual, title, desc, dua) in CurrentRituals)
+{
+    var status = _progress.GetValueOrDefault(ritual, ProgressStatus.NotStarted);
+    <div class="nb-card mt-1r @(status == ProgressStatus.Completed ? "nb-primary" : status == ProgressStatus.InProgress ? "nb-accent" : null)">
+        <div class="flex space-between flex-wrap">
+            <h3 style="margin:0">
+                @(status switch { ProgressStatus.Completed => "✅", ProgressStatus.InProgress => "▶️", _ => "⭕" })
+                @title
+            </h3>
+            <div class="flex">
+                @if (status == ProgressStatus.NotStarted)
+                {
+                    <button class="nb-btn small accent" @onclick="() => SetStatus(ritual, ProgressStatus.InProgress)">@L["rituals.start"]</button>
+                }
+                @if (status != ProgressStatus.Completed)
+                {
+                    <button class="nb-btn small primary" @onclick="() => SetStatus(ritual, ProgressStatus.Completed)">@L["rituals.markDone"]</button>
+                }
+                else
+                {
+                    <button class="nb-btn small" @onclick="() => SetStatus(ritual, ProgressStatus.NotStarted)">@L["rituals.repeat"]</button>
+                }
+            </div>
+        </div>
+        <p style="margin:.5rem 0">@desc</p>
+        @if (dua is not null)
+        {
+            <div class="nb-card nb-flat nb-gold" style="padding:.7rem; font-size:.9rem">🤲 <em>@dua</em></div>
+        }
+    </div>
+}
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private string _tab = "umrah";
+    private AppUser? _user;
+    private Dictionary<RitualType, ProgressStatus> _progress = [];
+    private List<Badge> _newBadges = [];
+
+    private List<(RitualType Ritual, string Title, string Desc, string? Dua)> UmrahSteps => new()
+    {
+        (RitualType.Ihram, L["rituals.u1t"], L["rituals.u1d"],
+            "Labbaik Allahumma labbaik, labbaika laa syarika laka labbaik. Innal hamda wan-ni'mata laka wal-mulk, laa syarika lak."),
+        (RitualType.Thawaf, L["rituals.u2t"], L["rituals.u2d"],
+            "Rabbana atina fid-dunya hasanah wa fil-akhirati hasanah wa qina 'adzaban-nar. (antara Rukun Yamani & Hajar Aswad)"),
+        (RitualType.Sai, L["rituals.u3t"], L["rituals.u3d"],
+            "Innash-shafa wal-marwata min sya'a'irillah…"),
+        (RitualType.Tahalul, L["rituals.u4t"], L["rituals.u4d"], null),
+        (RitualType.ZiarahNabawi, L["rituals.u5t"], L["rituals.u5d"], null),
+    };
+
+    private List<(RitualType Ritual, string Title, string Desc, string? Dua)> HajiSteps => new()
+    {
+        (RitualType.Ihram, L["rituals.h1t"], L["rituals.h1d"], "Labbaik Allahumma hajjan."),
+        (RitualType.WukufArafah, L["rituals.h2t"], L["rituals.h2d"],
+            "Laa ilaha illallah wahdahu laa syarika lah, lahul-mulku wa lahul-hamdu wa huwa 'ala kulli syai'in qadir."),
+        (RitualType.MabitMuzdalifah, L["rituals.h3t"], L["rituals.h3d"], null),
+        (RitualType.LemparJumrah, L["rituals.h4t"], L["rituals.h4d"], "Bismillahi Allahu Akbar (setiap lemparan)"),
+        (RitualType.MabitMina, L["rituals.h5t"], L["rituals.h5d"], null),
+        (RitualType.ThawafIfadah, L["rituals.h6t"], L["rituals.h6d"], null),
+        (RitualType.ThawafWada, L["rituals.h7t"], L["rituals.h7d"], null),
+    };
+
+    private List<(RitualType Ritual, string Title, string Desc, string? Dua)> CurrentRituals
+        => _tab == "umrah" ? UmrahSteps : HajiSteps;
+
+    private int OverallPercent => CurrentRituals.Count == 0 ? 0 :
+        (int)(100.0 * CurrentRituals.Count(r => _progress.GetValueOrDefault(r.Ritual) == ProgressStatus.Completed) / CurrentRituals.Count);
+
+    private string ProgressText
+    {
+        get
+        {
+            int done = _progress.Count(p => p.Value == ProgressStatus.Completed);
+            string word = _tab == "umrah" ? L["rituals.wordU"] : L["rituals.wordH"];
+            return string.Format(L["rituals.progressFmt"], done, CurrentRituals.Count, word, OverallPercent);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await Auth.GetCurrentUserAsync(AuthState);
+        await LoadProgress();
+    }
+
+    private async Task LoadProgress()
+    {
+        if (_user is null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _progress = (await db.RitualProgresses.Where(p => p.UserId == _user.Id).ToListAsync())
+            .ToDictionary(p => p.Ritual, p => p.Status);
+    }
+
+    private async Task SetStatus(RitualType ritual, ProgressStatus status)
+    {
+        if (_user is null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var p = db.RitualProgresses.FirstOrDefault(x => x.UserId == _user.Id && x.Ritual == ritual);
+        if (p is null)
+        {
+            p = new RitualProgress { UserId = _user.Id, Ritual = ritual };
+            db.RitualProgresses.Add(p);
+        }
+        p.Status = status;
+        if (status == ProgressStatus.InProgress) p.StartedAt ??= DateTime.UtcNow;
+        if (status == ProgressStatus.Completed)
+        {
+            p.CompletedAt = DateTime.UtcNow;
+            if (p.StartedAt is not null)
+                p.DurationMinutes = Math.Max(1, (int)(DateTime.UtcNow - p.StartedAt.Value).TotalMinutes);
+        }
+        await db.SaveChangesAsync();
+        _progress[ritual] = status;
+        _newBadges = await Gamification.EvaluateAsync(_user.Id);
+    }
+}

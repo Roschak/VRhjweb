@@ -1,0 +1,209 @@
+@page "/jamaah/{Id:int}"
+@attribute [Authorize(Roles = "Admin,Operator,Pembimbing")]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IStorageService Storage
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["jd.pageTitle"]</PageTitle>
+
+@if (_user is null)
+{
+    <p>@L["common.loading"]</p>
+}
+else
+{
+    <div class="flex space-between flex-wrap">
+        <h1>🧕 @_user.DisplayName</h1>
+        <div class="flex">
+            <button class="nb-btn danger small" @onclick="DownloadPdf">@L["jd.pdf"]</button>
+            <a class="nb-btn small" href="/jamaah">@L["common.back"]</a>
+        </div>
+    </div>
+
+    <div class="grid-2 mt-1r">
+        <div class="nb-card">
+            <h3>@L["jd.profile"]</h3>
+            <label class="nb-label">@L["jd.group"]</label>
+            <input class="nb-input" @bind="_profile.GroupName" />
+            <div class="flex mt-1r">
+                <div style="flex:1">
+                    <label class="nb-label">@L["jd.package"]</label>
+                    <select class="nb-select" @bind="_profile.PackageType">
+                        <option>Umrah</option>
+                        <option>Haji</option>
+                    </select>
+                </div>
+                <div style="flex:1">
+                    <label class="nb-label">@L["jd.passport"]</label>
+                    <input class="nb-input" @bind="_profile.PassportNumber" />
+                </div>
+            </div>
+            <div class="flex mt-1r">
+                <div style="flex:1">
+                    <label class="nb-label">@L["jd.nationality"]</label>
+                    <input class="nb-input" @bind="_profile.Nationality" />
+                </div>
+                <div style="flex:1">
+                    <label class="nb-label">@L["jd.phone"]</label>
+                    <input class="nb-input" @bind="_profile.Phone" />
+                </div>
+            </div>
+            <label class="nb-label" style="margin-top:.8rem">@L["jd.notes"]</label>
+            <textarea class="nb-textarea" rows="2" @bind="_profile.Notes"></textarea>
+            <button class="nb-btn primary mt-1r" @onclick="SaveProfile">@L["jd.save"]</button>
+            @if (_saved)
+            {
+                <span class="nb-chip green">@L["jd.saved"]</span>
+            }
+        </div>
+
+        <div class="nb-card">
+            <h3>@L["jd.progress"]</h3>
+            @foreach (var p in _progress)
+            {
+                <div class="flex" style="margin-bottom:.4rem">
+                    <span style="width:24px">@(p.Status switch { ProgressStatus.Completed => "✅", ProgressStatus.InProgress => "▶️", _ => "⭕" })</span>
+                    <span style="flex:1">@RitualName(p.Ritual)</span>
+                    <span class="muted mono" style="font-size:.78rem">@(p.CompletedAt?.ToLocalTime().ToString("dd MMM HH:mm") ?? "-")</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="nb-card mt-1r">
+        <div class="flex space-between flex-wrap">
+            <h3>@L["jd.docs"] (@_documents.Count)</h3>
+            <label class="nb-btn accent small">
+                @L["jd.upload"]
+                <InputFile OnChange="OnUpload" multiple style="display:none"
+                           accept="image/*,video/*,.pdf,.doc,.docx,.txt,.md,.xlsx" />
+            </label>
+        </div>
+        <div class="table-wrap">
+            <table class="nb-table">
+                <thead>
+                    <tr><th>@L["jd.colTitle"]</th><th>@L["jd.colType"]</th><th>@L["jd.colSize"]</th><th>@L["jd.colUploaded"]</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in _documents)
+                    {
+                        <tr>
+                            <td>
+                                @if (d.Kind == "Gambar" && !string.IsNullOrEmpty(d.Url))
+                                {
+                                    <img src="@d.Url" alt="@d.Title" style="height:36px; border-radius:6px; border:2px solid var(--border); margin-right:.4rem; vertical-align:middle" />
+                                }
+                                @if (!string.IsNullOrEmpty(d.Url))
+                                {
+                                    <a href="@d.Url" target="_blank">@d.Title</a>
+                                }
+                                else
+                                {
+                                    @d.Title
+                                }
+                            </td>
+                            <td><span class="nb-chip blue">@KindName(d.Kind)</span></td>
+                            <td class="mono">@FormatSize(d.SizeBytes)</td>
+                            <td class="mono">@d.UploadedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                            <td><button class="nb-btn small danger" @onclick="() => DeleteDoc(d)">🗑️</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    [Parameter] public int Id { get; set; }
+
+    private AppUser? _user;
+    private JamaahProfile _profile = new();
+    private List<RitualProgress> _progress = [];
+    private List<JamaahDocument> _documents = [];
+    private bool _saved;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _user = await db.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.Id == Id);
+        if (_user is null) return;
+        _profile = _user.Profile ?? new JamaahProfile { UserId = Id };
+        _progress = await db.RitualProgresses.Where(p => p.UserId == Id).OrderBy(p => p.Ritual).ToListAsync();
+        _documents = await db.Documents.Where(d => d.UserId == Id).OrderByDescending(d => d.UploadedAt).ToListAsync();
+    }
+
+    private string RitualName(RitualType r) => L[$"rit.{r}"];
+
+    private string KindName(string kind) => kind switch
+    {
+        "Gambar" => L["jd.kindImg"],
+        "Video" => L["jd.kindVideo"],
+        "Dokumen" => L["jd.kindDoc"],
+        _ => kind
+    };
+
+    private async Task SaveProfile()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (_profile.Id == 0) db.JamaahProfiles.Add(_profile);
+        else db.JamaahProfiles.Update(_profile);
+        await db.SaveChangesAsync();
+        _saved = true;
+    }
+
+    private async Task OnUpload(InputFileChangeEventArgs e)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            await using var stream = file.OpenReadStream(50 * 1024 * 1024);
+            var url = await Storage.SaveAsync(stream, file.Name, file.ContentType);
+            db.Documents.Add(new JamaahDocument
+            {
+                UserId = Id,
+                Title = file.Name,
+                FileName = file.Name,
+                Url = url,
+                ContentType = file.ContentType,
+                SizeBytes = file.Size,
+                Kind = file.ContentType.StartsWith("image/") ? "Gambar"
+                     : file.ContentType.StartsWith("video/") ? "Video" : "Dokumen"
+            });
+        }
+        await db.SaveChangesAsync();
+        _documents = await db.Documents.Where(d => d.UserId == Id).OrderByDescending(d => d.UploadedAt).ToListAsync();
+    }
+
+    private async Task DeleteDoc(JamaahDocument d)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Documents.Remove(d);
+        await db.SaveChangesAsync();
+        if (!string.IsNullOrEmpty(d.Url))
+        {
+            try { await Storage.DeleteAsync(d.Url); } catch { }
+        }
+        _documents.RemoveAll(x => x.Id == d.Id);
+    }
+
+    private async Task DownloadPdf()
+        => await JS.InvokeVoidAsync("hajjvrUtil.downloadUrl", $"/api/reports/jamaah/{Id}.pdf");
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        > 1024 * 1024 => $"{bytes / 1024.0 / 1024:0.0} MB",
+        > 1024 => $"{bytes / 1024.0:0.0} KB",
+        _ => $"{bytes} B"
+    };
+}

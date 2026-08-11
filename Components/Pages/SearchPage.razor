@@ -1,0 +1,62 @@
+@page "/search"
+@attribute [Authorize]
+@inject SemanticSearchService Search
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["search.pageTitle"]</PageTitle>
+
+<h1>@L["search.title"]</h1>
+<p class="muted">@L["search.subtitle"] @(Search.UsingVectors ? L["search.modeVec"] : L["search.modeKw"])</p>
+
+<div class="flex mt-1r">
+    <input class="nb-input" placeholder="@L["search.placeholder"]"
+           @bind="_query" @bind:event="oninput" @onkeydown="@(e => { if (e.Key == "Enter") _ = Run(); })" />
+    <button class="nb-btn primary" @onclick="Run" disabled="@_busy">@L["common.search"]</button>
+</div>
+
+@if (_busy)
+{
+    <p class="mt-1r">@L["common.loading"]</p>
+}
+else if (_searched && _results.Count == 0)
+{
+    <div class="nb-card nb-danger mt-1r">@L["search.noResults"] "<strong>@_lastQuery</strong>".</div>
+}
+else
+{
+    @foreach (var r in _results)
+    {
+        <div class="nb-card hoverable mt-1r">
+            <div class="flex space-between">
+                <h3 style="margin:0">@r.Title</h3>
+                <span class="nb-chip blue">@r.Source · @L["search.score"] @r.Score.ToString("0.00")</span>
+            </div>
+            <p style="margin:.5rem 0 0; white-space:pre-line">@r.Snippet</p>
+        </div>
+    }
+}
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private string _query = "", _lastQuery = "";
+    private List<SearchHit> _results = [];
+    private bool _busy, _searched;
+
+    private async Task Run()
+    {
+        if (string.IsNullOrWhiteSpace(_query)) return;
+        _busy = true;
+        _lastQuery = _query;
+        StateHasChanged();
+        _results = await Search.SearchAsync(_query, 8);
+        _busy = false;
+        _searched = true;
+    }
+}

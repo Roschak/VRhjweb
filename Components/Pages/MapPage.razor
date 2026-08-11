@@ -1,0 +1,126 @@
+@page "/map"
+@attribute [Authorize]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject LocalizationService L
+@implements IDisposable
+
+<PageTitle>@L["map.pageTitle"]</PageTitle>
+
+<div class="flex space-between flex-wrap">
+    <h1>@L["map.title"]</h1>
+    <div class="flex">
+        <button class="nb-btn small @(_region == "makkah" ? "primary" : null)" @onclick='() => _region = "makkah"'>@L["map.makkah"]</button>
+        <button class="nb-btn small @(_region == "madinah" ? "primary" : null)" @onclick='() => _region = "madinah"'>@L["map.madinah"]</button>
+        <a class="nb-btn small accent" href="/simulation">@L["map.open3d"]</a>
+    </div>
+</div>
+
+<div class="grid-2 mt-1r">
+    <div class="nb-card" style="min-height:480px">
+        <svg viewBox="0 0 600 480" style="width:100%; background:var(--bg-2); border-radius:10px; border:2px solid var(--border)">
+            @foreach (var loc in Visible)
+            {
+                var (x, y) = Project(loc);
+                var selected = _selected?.Id == loc.Id;
+                <g style="cursor:pointer" @onclick="() => _selected = loc">
+                    <circle cx="@x" cy="@y" r="@(selected ? 14 : 9)" fill="@CategoryColor(loc.Category)"
+                            stroke="var(--border)" stroke-width="2.5" />
+                    @((MarkupString)$"<text x='{x.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}' y='{(y - 16).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}' font-size='11' font-weight='700' text-anchor='middle' fill='var(--ink)'>{System.Net.WebUtility.HtmlEncode(loc.Name)}</text>")
+                </g>
+            }
+        </svg>
+        <div class="flex flex-wrap mt-1r" style="font-size:.8rem">
+            <span class="nb-chip green">● @L["map.catMasjid"]</span>
+            <span class="nb-chip orange">● @L["map.catRitual"]</span>
+            <span class="nb-chip blue">● @L["map.catZiarah"]</span>
+            <span class="nb-chip">● @L["map.catFacility"]</span>
+        </div>
+    </div>
+
+    <div>
+        @if (_selected is null)
+        {
+            <div class="nb-card nb-gold">@L["map.selectHint"]</div>
+        }
+        else
+        {
+            <div class="nb-card nb-primary">
+                <h3>@_selected.Name <span class="muted" style="font-size:1rem">@_selected.NameArabic</span></h3>
+                <span class="nb-chip orange">@CategoryName(_selected.Category)</span>
+                <span class="nb-chip mono">@_selected.Latitude.ToString("0.0000"), @_selected.Longitude.ToString("0.0000")</span>
+                <p class="mt-1r">@_selected.Description</p>
+                @if (!string.IsNullOrEmpty(_selected.SceneKey))
+                {
+                    <a class="nb-btn primary small" href="/simulation">@L["map.viewIn3d"] (@_selected.SceneKey)</a>
+                }
+            </div>
+        }
+
+        <div class="nb-card mt-1r">
+            <h4>@L["map.allLocations"] (@Visible.Count)</h4>
+            <div style="max-height:300px; overflow-y:auto">
+                @foreach (var loc in Visible)
+                {
+                    <div class="session-item @(_selected?.Id == loc.Id ? "active" : null)" @onclick="() => _selected = loc">
+                        <span class="title">@loc.Name</span>
+                        <span class="nb-chip" style="font-size:.68rem">@CategoryName(loc.Category)</span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+
+    private List<Location> _all = [];
+    private Location? _selected;
+    private string _region = "makkah";
+
+    private List<Location> Visible => _all
+        .Where(l => _region == "makkah" ? l.Latitude < 24 : l.Latitude >= 24)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _all = await db.Locations.ToListAsync();
+    }
+
+    private (double x, double y) Project(Location loc)
+    {
+        // proyeksi sederhana relatif bounding box wilayah
+        var pts = Visible;
+        double minLat = pts.Min(p => p.Latitude), maxLat = pts.Max(p => p.Latitude);
+        double minLng = pts.Min(p => p.Longitude), maxLng = pts.Max(p => p.Longitude);
+        double padLat = Math.Max(0.002, (maxLat - minLat) * .15);
+        double padLng = Math.Max(0.002, (maxLng - minLng) * .15);
+        minLat -= padLat; maxLat += padLat; minLng -= padLng; maxLng += padLng;
+        double x = (loc.Longitude - minLng) / (maxLng - minLng) * 560 + 20;
+        double y = (maxLat - loc.Latitude) / (maxLat - minLat) * 430 + 25;
+        return (x, y);
+    }
+
+    private string CategoryName(string cat) => cat switch
+    {
+        "Masjid" => L["map.catMasjid"],
+        "Ritual" => L["map.catRitual"],
+        "Ziarah" => L["map.catZiarah"],
+        "Fasilitas" => L["map.catFacility"],
+        _ => cat
+    };
+
+    private static string CategoryColor(string cat) => cat switch
+    {
+        "Masjid" => "var(--primary)",
+        "Ritual" => "var(--accent)",
+        "Ziarah" => "var(--info)",
+        _ => "var(--ink-soft)"
+    };
+}

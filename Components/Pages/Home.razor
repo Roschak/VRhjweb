@@ -1,0 +1,102 @@
+@page "/"
+@implements IDisposable
+@inject LocalizationService L
+
+<PageTitle>@L["home.pageTitle"]</PageTitle>
+
+<section class="hero">
+    <div class="bismillah">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>
+    <div class="hero-badge">@L["home.badge"]</div>
+    <h1>@L["home.welcome"]</h1>
+    <p class="hero-tagline">@L["home.tagline"]</p>
+    <div class="hero-cta">
+        <AuthorizeView>
+            <Authorized>
+                <a class="nb-btn primary" href="/simulation">@L["home.ctaStart"]</a>
+                <a class="nb-btn" href="/chat">@L["home.ctaChat"]</a>
+                <a class="nb-btn" href="/rituals">@L["home.ctaRituals"]</a>
+            </Authorized>
+            <NotAuthorized>
+                <a class="nb-btn primary" href="/login">@L["home.ctaLogin"]</a>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
+</section>
+
+<div class="ornament" aria-hidden="true">
+    <span class="diamond">◆</span>
+</div>
+
+<div class="section-title">
+    <h2>@L["home.explore"]</h2>
+    <div class="rule"></div>
+</div>
+
+<div class="feature-grid">
+    <div class="nb-card hoverable feature-card">
+        <span class="medallion">🕋</span>
+        <div>
+            <h3>@L["home.f1t"]</h3>
+            <p class="muted">@L["home.f1d"]</p>
+        </div>
+    </div>
+    <div class="nb-card hoverable feature-card">
+        <span class="medallion">🕌</span>
+        <div>
+            <h3>@L["home.f2t"]</h3>
+            <p class="muted">@L["home.f2d"]</p>
+        </div>
+    </div>
+    <div class="nb-card hoverable feature-card">
+        <span class="medallion">⛰️</span>
+        <div>
+            <h3>@L["home.f3t"]</h3>
+            <p class="muted">@L["home.f3d"]</p>
+        </div>
+    </div>
+    <div class="nb-card hoverable feature-card">
+        <span class="medallion">💬</span>
+        <div>
+            <h3>@L["home.f4t"]</h3>
+            <p class="muted">@L["home.f4d"]</p>
+        </div>
+    </div>
+    <div class="nb-card hoverable feature-card">
+        <span class="medallion">📊</span>
+        <div>
+            <h3>@L["home.f5t"]</h3>
+            <p class="muted">@L["home.f5d"]</p>
+        </div>
+    </div>
+    <div class="nb-card hoverable feature-card">
+        <span class="medallion">🏅</span>
+        <div>
+            <h3>@L["home.f6t"]</h3>
+            <p class="muted">@L["home.f6d"]</p>
+        </div>
+    </div>
+</div>
+
+<div class="ornament" aria-hidden="true">
+    <span class="diamond">◆</span>
+</div>
+
+<div class="nb-card nb-gold mt-1r">
+    <div class="flex flex-wrap">
+        <strong>@L["home.demo"]</strong>
+        <span class="nb-chip green mono">admin / admin123</span>
+        <span class="nb-chip mono">operator / operator123</span>
+        <span class="nb-chip mono">ustadz.ahmad / ustadz.ahmad123</span>
+        <span class="nb-chip gold mono">jamaah01 / jamaah01123</span>
+    </div>
+</div>
+
+@code {
+    private bool _langSub;
+    protected override void OnParametersSet()
+    {
+        if (!_langSub) { _langSub = true; L.OnChanged += StateHasChanged; }
+    }
+    public void Dispose() => L.OnChanged -= StateHasChanged;
+}
+
