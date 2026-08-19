@@ -7,7 +7,7 @@
 <PageTitle>@L["dash.pageTitle"]</PageTitle>
 
 <div class="flex space-between flex-wrap">
-    <h1>📊 @L["nav.dashboard"]</h1>
+    <h1><i class="ph ph-chart-bar"></i> @L["nav.dashboard"]</h1>
     <span class="nb-chip blue">@L["dash.autoRefresh"]</span>
 </div>
 
@@ -18,12 +18,12 @@
 else
 {
     <div class="stat-grid mt-1r">
-        <StatCard Label="@L["dash.totalJamaah"]" Value="@_summary.TotalJamaah.ToString("n0")" Icon="🧕" CssClass="nb-primary"
+        <StatCard Label="@L["dash.totalJamaah"]" Value="@_summary.TotalJamaah.ToString("n0")" Icon="ph ph-users" CssClass="nb-primary"
                   Sub="@string.Format(L["dash.mentors"], _summary.TotalPembimbing.ToString("n0"))" />
-        <StatCard Label="@L["dash.avgProgress"]" Value="@($"{_summary.AvgProgressPercent}%")" Icon="📈" CssClass="nb-info" />
-        <StatCard Label="@L["dash.completedUmrah"]" Value="@_summary.UmrahCompleted.ToString()" Icon="🌙" CssClass="nb-gold"
+        <StatCard Label="@L["dash.avgProgress"]" Value="@($"{_summary.AvgProgressPercent}%")" Icon="ph ph-trend-up" CssClass="nb-info" />
+        <StatCard Label="@L["dash.completedUmrah"]" Value="@_summary.UmrahCompleted.ToString()" Icon="ph ph-moon-stars" CssClass="nb-gold"
                   Sub="@string.Format(L["dash.hajiDone"], _summary.HajiCompleted.ToString())" />
-        <StatCard Label="@L["dash.activeNow"]" Value="@_summary.Activities24h.ToString("n0")" Icon="⚡" CssClass="nb-accent"
+        <StatCard Label="@L["dash.activeNow"]" Value="@_summary.Activities24h.ToString("n0")" Icon="ph ph-lightning" CssClass="nb-accent"
                   Sub="@string.Format(L["dash.chatSessions"], _summary.ChatSessions.ToString())" />
     </div>
 

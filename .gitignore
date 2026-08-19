@@ -3,5 +3,11 @@ obj/
 .vs/ 
 *.user 
 *.suo 
+*.db
 *.db-shm 
 *.db-wal 
+
+# SQLite Local Database
+*.db
+*.db-wal
+*.db-shm

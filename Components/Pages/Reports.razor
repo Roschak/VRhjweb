@@ -10,8 +10,8 @@
 <div class="flex space-between flex-wrap">
     <h1>@L["rep.title"]</h1>
     <div class="flex">
-        <button class="nb-btn danger small" @onclick='() => Download("pdf")'>📄 @L["common.export.pdf"]</button>
-        <button class="nb-btn primary small" @onclick='() => Download("xlsx")'>📊 @L["common.export.excel"]</button>
+        <button class="nb-btn danger small" @onclick='() => Download("pdf")'><i class="ph ph-file-pdf"></i> @L["common.export.pdf"]</button>
+        <button class="nb-btn primary small" @onclick='() => Download("xlsx")'><i class="ph ph-chart-bar"></i> @L["common.export.excel"]</button>
     </div>
 </div>
 
@@ -52,7 +52,7 @@
                     <td class="mono">@pct%</td>
                     <td>
                         <button class="nb-btn small" title="@L["rep.downloadPdf"]"
-                                @onclick="() => DownloadJamaah(row.User.Id)">📄</button>
+                                @onclick="() => DownloadJamaah(row.User.Id)"><i class="ph ph-download"></i></button>
                     </td>
                 </tr>
             }

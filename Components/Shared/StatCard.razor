@@ -8,14 +8,14 @@
                 <div class="muted" style="font-size:.8rem">@Sub</div>
             }
         </div>
-        <div class="stat-icon">@Icon</div>
+        <div class="stat-icon"><i class="@Icon"></i></div>
     </div>
 </div>
 
 @code {
     [Parameter] public string Label { get; set; } = "";
     [Parameter] public string Value { get; set; } = "";
-    [Parameter] public string Icon { get; set; } = "📊";
+    [Parameter] public string Icon { get; set; } = "ph ph-chart-bar";
     [Parameter] public string? Sub { get; set; }
     [Parameter] public string? CssClass { get; set; }
 }

@@ -3,46 +3,46 @@
 
 <aside class="sidebar @(Open ? "open" : null)" @onclick="OnClose">
     <div class="brand">
-        <span class="brand-mark">🕋</span>
+        <span class="brand-mark"><i class="ph-fill ph-cube"></i></span>
         <span class="brand-name">HajjVR</span>
         <span class="brand-sub">@L["app.subtitle"]</span>
     </div>
     <nav>
-        <NavLink class="nav-item" href="/" Match="NavLinkMatch.All"><span>🏠</span> @L["nav.home"]</NavLink>
+        <NavLink class="nav-item" href="/" Match="NavLinkMatch.All"><span><i class="ph ph-house"></i></span> @L["nav.home"]</NavLink>
 
         <AuthorizeView>
             <Authorized>
                 <div class="nav-group">@L["nav.groupSim"]</div>
-                <NavLink class="nav-item" href="/simulation"><span>🕋</span> @L["nav.simulation"]</NavLink>
-                <NavLink class="nav-item" href="/map"><span>🗺️</span> @L["nav.map"]</NavLink>
-                <NavLink class="nav-item" href="/rituals"><span>📿</span> @L["nav.rituals"]</NavLink>
+                <NavLink class="nav-item" href="/simulation"><span><i class="ph ph-cube"></i></span> @L["nav.simulation"]</NavLink>
+                <NavLink class="nav-item" href="/map"><span><i class="ph ph-map-trifold"></i></span> @L["nav.map"]</NavLink>
+                <NavLink class="nav-item" href="/rituals"><span><i class="ph ph-hands-praying"></i></span> @L["nav.rituals"]</NavLink>
 
                 <div class="nav-group">@L["nav.groupAsst"]</div>
-                <NavLink class="nav-item" href="/chat"><span>💬</span> @L["nav.chat"]</NavLink>
-                <NavLink class="nav-item" href="/search"><span>🔎</span> @L["nav.search"]</NavLink>
+                <NavLink class="nav-item" href="/chat"><span><i class="ph ph-chat-circle-dots"></i></span> @L["nav.chat"]</NavLink>
+                <NavLink class="nav-item" href="/search"><span><i class="ph ph-magnifying-glass"></i></span> @L["nav.search"]</NavLink>
 
                 <div class="nav-group">@L["nav.groupComm"]</div>
-                <NavLink class="nav-item" href="/leaderboard"><span>🏅</span> @L["nav.leaderboard"]</NavLink>
-                <NavLink class="nav-item" href="/profile"><span>👤</span> @L["nav.profile"]</NavLink>
+                <NavLink class="nav-item" href="/leaderboard"><span><i class="ph ph-medal"></i></span> @L["nav.leaderboard"]</NavLink>
+                <NavLink class="nav-item" href="/profile"><span><i class="ph ph-user"></i></span> @L["nav.profile"]</NavLink>
             </Authorized>
         </AuthorizeView>
 
         <AuthorizeView Roles="Admin,Operator,Pembimbing">
             <Authorized>
                 <div class="nav-group">@L["nav.groupMgmt"]</div>
-                <NavLink class="nav-item" href="/dashboard"><span>📊</span> @L["nav.dashboard"]</NavLink>
-                <NavLink class="nav-item" href="/reports"><span>📑</span> @L["nav.reports"]</NavLink>
-                <NavLink class="nav-item" href="/jamaah"><span>🧕</span> @L["nav.jamaah"]</NavLink>
+                <NavLink class="nav-item" href="/dashboard"><span><i class="ph ph-chart-bar"></i></span> @L["nav.dashboard"]</NavLink>
+                <NavLink class="nav-item" href="/reports"><span><i class="ph ph-file-text"></i></span> @L["nav.reports"]</NavLink>
+                <NavLink class="nav-item" href="/jamaah"><span><i class="ph ph-users"></i></span> @L["nav.jamaah"]</NavLink>
             </Authorized>
         </AuthorizeView>
 
         <AuthorizeView Roles="Admin,Operator">
             <Authorized>
                 <div class="nav-group">@L["nav.groupSys"]</div>
-                <NavLink class="nav-item" href="/admin/users"><span>👥</span> @L["nav.users"]</NavLink>
-                <NavLink class="nav-item" href="/admin/settings"><span>⚙️</span> @L["nav.settings"]</NavLink>
-                <NavLink class="nav-item" href="/stress-test"><span>⚡</span> @L["nav.stress"]</NavLink>
-                <a class="nav-item" href="/swagger" target="_blank"><span>🔌</span> API (Swagger)</a>
+                <NavLink class="nav-item" href="/admin/users"><span><i class="ph ph-users-three"></i></span> @L["nav.users"]</NavLink>
+                <NavLink class="nav-item" href="/admin/settings"><span><i class="ph ph-gear"></i></span> @L["nav.settings"]</NavLink>
+                <NavLink class="nav-item" href="/stress-test"><span><i class="ph ph-lightning"></i></span> @L["nav.stress"]</NavLink>
+                <a class="nav-item" href="/swagger" target="_blank"><span><i class="ph ph-plug"></i></span> API (Swagger)</a>
             </Authorized>
         </AuthorizeView>
     </nav>

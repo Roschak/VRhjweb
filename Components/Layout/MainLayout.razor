@@ -12,9 +12,9 @@
     <div class="main-area">
         <header class="topbar">
             <div class="flex">
-                <button class="nb-btn small hamburger" aria-label="@L["common.openMenu"]" @onclick="() => _sidebarOpen = !_sidebarOpen">☰</button>
+                <button class="nb-btn small hamburger" aria-label="@L["common.openMenu"]" @onclick="() => _sidebarOpen = !_sidebarOpen"><i class="ph ph-list"></i></button>
                 <span class="topbar-brand">
-                    <span class="crescent">☪</span>
+                    <span class="crescent"><i class="ph ph-moon-stars"></i></span>
                     <span>HajjVR</span>
                 </span>
                 <span class="muted topbar-title d-none d-md-inline">— @L["app.title"]</span>
@@ -24,10 +24,10 @@
                 <AuthorizeView>
                     <Authorized>
                         <a class="nb-chip green" href="/profile" title="@L["common.profile"]">
-                            👤 @(context.User.FindFirst("display")?.Value ?? context.User.Identity?.Name)
+                            <i class="ph ph-user"></i> @(context.User.FindFirst("display")?.Value ?? context.User.Identity?.Name)
                         </a>
                         <form method="post" action="/auth/logout" style="display:inline">
-                            <button type="submit" class="nb-btn small danger" title="@L["nav.logout"]">⎋</button>
+                            <button type="submit" class="nb-btn small danger" title="@L["nav.logout"]"><i class="ph ph-sign-out"></i></button>
                         </form>
                     </Authorized>
                     <NotAuthorized>
@@ -46,7 +46,7 @@
 <div id="blazor-error-ui" data-nosnippet>
     @L["errUi.title"]
     <a href="." class="reload">@L["errUi.reload"]</a>
-    <span class="dismiss">🗙</span>
+    <span class="dismiss"><i class="ph ph-x"></i></span>
 </div>
 
 @code {
